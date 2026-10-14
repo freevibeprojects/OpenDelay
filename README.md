@@ -70,6 +70,21 @@ cargo install cargo-xwin
 cargo xwin build --release --target x86_64-pc-windows-msvc
 ```
 
+### Platform notes
+
+- **Tray icon (Linux)** uses the StatusNotifierItem protocol (KDE, most other
+  desktops; GNOME needs the AppIndicator extension). Because a missing tray
+  would leave a hidden window unreachable, closing the window quits on Linux
+  unless you choose "Keep in tray" in Settings.
+- **Global hotkeys** work on Windows and X11. Wayland compositors do not allow
+  global key grabs; bind your desktop's own shortcuts to the controller
+  WebSocket or the HTTP API instead (see the controller protocol).
+- **Start with the system** writes the per-user `Run` registry value on
+  Windows and `~/.config/autostart/opendelay.desktop` on Linux.
+- Settings live in `%APPDATA%\OpenDelay` / `~/.config/opendelay`, session logs
+  in `%LOCALAPPDATA%\OpenDelay\logs` / `~/.local/share/opendelay/logs`
+  (override with `OPENDELAY_CONFIG_DIR` / `OPENDELAY_DATA_DIR`).
+
 ### Checks
 
 ```sh
@@ -77,6 +92,12 @@ cargo test
 cargo clippy --all-targets
 cargo deny check          # cargo install cargo-deny
 ```
+
+Developer tools: `cargo run -p opendelay-core --example serve` runs the relay
+and web server without a window; `cargo run -p opendelay --example screenshot
+--features screenshot -- DIR` renders every page offscreen.
+`python3 scripts/extract_strings.py crates/app/lang/fr/LC_MESSAGES/opendelay.po`
+lists untranslated desktop strings.
 
 After changing dependencies, regenerate the licence list:
 
@@ -93,3 +114,22 @@ python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.md
 | `crates/app` | Desktop application (Slint UI, tray, hotkeys, autostart) |
 | `docs/` | Design decisions and the controller protocol |
 | `SPEC.md`, `DESIGN.md` | Behaviour and visual requirements |
+
+## Releases and updates
+
+The optional update check reads the release feed set in
+`crates/core/src/update.rs` (`FEED_URL`, GitHub "latest release" format; a
+placeholder until the project is published). An update is only kept after its
+Ed25519 signature verifies against `PUBLIC_KEY` (also a placeholder: all
+downloads are rejected until it is set). To sign a release archive with
+OpenSSL 3:
+
+```sh
+openssl genpkey -algorithm ed25519 -out release-key.pem      # once; keep it secret
+openssl pkey -in release-key.pem -pubout -outform DER | tail -c 32 | xxd -i   # PUBLIC_KEY bytes
+openssl pkeyutl -sign -inkey release-key.pem -rawin -in opendelay-X.Y.Z-windows-x86_64.zip \
+    | base64 -w0 > opendelay-X.Y.Z-windows-x86_64.zip.sig
+```
+
+Upload the archive (its name must contain `windows-x86_64` or `linux-x86_64`)
+and the `.sig` file as release assets.

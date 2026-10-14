@@ -257,6 +257,13 @@ impl Relay {
         }
     }
 
+    /// Record an action in every publishing stream's session log.
+    fn log_all(&self, text: &str) {
+        for s in self.streaming() {
+            s.log.event(text);
+        }
+    }
+
     fn check_delay(d: Duration) -> Result<(), Refusal> {
         if d.is_zero() || d > engine::MAX_DELAY {
             return Err(Refusal::InvalidValue("The delay must be between 1 second and 10 minutes."));
@@ -276,6 +283,8 @@ impl Relay {
         if d > cfg.buffer {
             self.update_config(|c| c.buffer = d);
         }
+        let how = if results.contains(&Enabled::Instant) { "instant switch" } else { "building up" };
+        self.log_all(&format!("Delay enabled: {} ({how})", secs(d)));
         Ok(if results.contains(&Enabled::Instant) {
             format!("Delay on: viewers are now {} behind.", secs(d))
         } else if d > cfg.buffer || results.contains(&Enabled::Building { buffer_grown: true }) {
@@ -288,6 +297,7 @@ impl Relay {
     /// Return to live.
     pub fn go_live(&self) -> Result<String, Refusal> {
         self.apply(|e, now| e.go_live(now))?;
+        self.log_all("Delay disabled: draining to the live edge");
         Ok("Going live: catching up with the live edge.".into())
     }
 
@@ -306,6 +316,7 @@ impl Relay {
             c.delay = delay;
             c.buffer = c.buffer.max(delay);
         });
+        self.log_all(&format!("Delay set to {}", secs(delay)));
         Ok(format!("Delay set to {}.", secs(delay)))
     }
 
@@ -323,6 +334,7 @@ impl Relay {
             s.engine().set_retain(cfg.retain());
         }
         self.update_config(|c| c.buffer = buffer);
+        self.log_all(&format!("Buffer set to {}", secs(buffer)));
         Ok(format!("Buffer set to {}.", secs(buffer)))
     }
 
@@ -337,6 +349,7 @@ impl Relay {
         for s in &sessions {
             s.engine().set_retain(retain);
         }
+        self.log_all(if on { "Delay mode on" } else { "Delay mode off" });
         Ok(if on { "Delay mode on." } else { "Delay mode off." }.into())
     }
 }

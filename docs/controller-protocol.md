@@ -129,6 +129,15 @@ All durations are milliseconds.
     "progress": null,
     "degraded": null
   },
+  "health": {
+    "codec": "H.264",
+    "width": 1920,
+    "height": 1080,
+    "keyframeIntervalMs": 2000,
+    "bFrames": false,
+    "frames": 22620,
+    "findings": []
+  },
   "streams": [
     {
       "id": 3,
@@ -142,7 +151,8 @@ All durations are milliseconds.
       "bytesOut": 566700000,
       "recoveryAttempt": 0,
       "lastError": null,
-      "delay": { "...": "same shape as above" }
+      "delay": { "...": "same shape as above" },
+      "health": { "...": "same shape as above" }
     }
   ],
   "overlayVisible": true,
@@ -165,6 +175,11 @@ All durations are milliseconds.
   `delay.targetMs` is the delay being established (0 when live).
 - `delay.ready` tells whether enabling the configured delay would be instant.
 - `delay.progress` (0–1) is set while buffering or draining.
+- `health.findings` lists problems with the encoder settings, each with a
+  `code` (`codec`, `keyframe_interval`, `keyframes_missing`, `b_frames`,
+  `timestamps`, `slow_start`, `resolution`), a `severity` (`low`, `medium`,
+  `high`), a `confidence` (0–1), the observed `value`, the `limit` it was
+  compared with and an English `message`.
 - With several routes live, `streams` lists each one and the top-level fields
   describe the first.
 
@@ -176,6 +191,11 @@ The same actions are available over HTTP for scripts and the OBS dock:
 
 - `GET /api/status` — `{ "success": true, "message": "", "code": null, "status": {...} }`
 - `POST /api/action` with a request body like the WebSocket request above.
+- `GET /api/routes`, `POST /api/routes`, `PUT|DELETE /api/routes/{id}` — routes.
+- `GET|PUT /api/network` (`{"listenerMode": "local"|"lan"}`), `GET|PUT
+  /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`.
+- `GET /api/diagnostics`, `GET /api/diagnostics/{id}` — session logs.
+- `GET /api/update` — release feed check (never downloads).
 
 State-changing HTTP requests (`POST`, `PUT`, `DELETE`) need the header
 `X-OpenDelay-Token`, whose per-run value is only available inside pages served

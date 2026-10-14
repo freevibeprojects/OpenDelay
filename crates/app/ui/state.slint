@@ -28,8 +28,10 @@ export struct StreamItem {
 export struct Finding {
     // low / medium / high
     severity: string,
-    title: string,
-    detail: string,
+    // codec / keyframe_interval / keyframes_missing / b_frames / timestamps / slow_start / resolution
+    code: string,
+    value: string,
+    limit: string,
 }
 
 export struct LogItem {
@@ -63,7 +65,12 @@ export global AppState {
     in property <bool> emergency;
     in property <[StreamItem]> streams;
     in property <[Finding]> findings;
-    in property <string> health-summary;
+    // detected stream properties ("" when unknown)
+    in property <string> health-codec;
+    in property <string> health-resolution;
+    in property <string> health-gop;
+    in property <bool> health-b-frames;
+    in property <int> health-frames;
     in property <string> encoder-url: "rtmp://127.0.0.1:1935/twitch";
     // ---- routes ----
     in property <[RouteItem]> routes;
@@ -102,6 +109,8 @@ export global AppState {
     in property <[LogItem]> logs;
     in property <string> logs-folder;
     in-out property <bool> onboarding-open;
+    // waiting for streams to end before quitting
+    in property <bool> quitting;
     // ---- toast ----
     in-out property <string> toast-text;
     in-out property <string> toast-kind;
@@ -143,6 +152,7 @@ export global AppState {
     // preset id, server URL (TikTok/Custom) → error or ""
     callback finish-onboarding(string, string) -> string;
     callback quit();
+    callback quit-now();
 
     public function toast(text: string, kind: string) {
         self.toast-text = text;
@@ -209,6 +219,7 @@ export global Strings {
         if (action == "overlay-off") { return @tr("Overlay hidden"); }
         if (action == "emergency") { return @tr("Emergency stop: every stream was disconnected"); }
         if (action == "allow") { return @tr("Streaming allowed again"); }
+        if (action == "twitch-list") { return @tr("Twitch server list updated"); }
         if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
         @tr("Saved")
     }
@@ -230,9 +241,55 @@ export global Strings {
         if (code == "hotkey_key") { return @tr("This key cannot be used for a global shortcut."); }
         if (code == "hotkey_taken") { return @tr("This shortcut is already used by another application or action."); }
         if (code == "hotkey_unsupported") { return @tr("Global hotkeys are not available in this session."); }
+        if (code == "hotkey_wayland") { return @tr("Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."); }
+        if (code == "autostart") { return @tr("Could not change the start-with-system setting: {}", detail); }
+        if (code == "network") { return @tr("Network error: {}", detail); }
         if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
         if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }
         detail
+    }
+
+    public pure function finding-title(code: string) -> string {
+        if (code == "codec") { return @tr("Unsupported video codec"); }
+        if (code == "keyframe_interval") { return @tr("Keyframe interval too long"); }
+        if (code == "keyframes_missing") { return @tr("Keyframes missing"); }
+        if (code == "b_frames") { return @tr("B-frames likely enabled"); }
+        if (code == "timestamps") { return @tr("Irregular timestamps"); }
+        if (code == "slow_start") { return @tr("Slow start"); }
+        if (code == "resolution") { return @tr("Resolution above the platform limit"); }
+        code
+    }
+
+    public pure function finding-detail(code: string, value: string, limit: string) -> string {
+        if (code == "codec") { return @tr("{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder.", value); }
+        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. The delay can only switch on a keyframe; set the keyframe interval to {} or less.", value, limit); }
+        if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall.", value); }
+        if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder for cleaner switches."); }
+        if (code == "timestamps") { return @tr("The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."); }
+        if (code == "slow_start") { return @tr("The first keyframe arrived {} after publishing started.", value); }
+        if (code == "resolution") { return @tr("{} is above the platform limit of {}. Lower the output resolution.", value, limit); }
+        ""
+    }
+
+    public pure function health-summary() -> string {
+        if (AppState.health-codec == "") { return ""; }
+        @tr("{} · {} · keyframes every {} · B-frames: {} · {} frames",
+            AppState.health-codec,
+            AppState.health-resolution == "" ? "?" : AppState.health-resolution,
+            AppState.health-gop == "" ? "?" : AppState.health-gop,
+            AppState.health-b-frames ? @tr("likely") : @tr("none seen"),
+            AppState.health-frames)
+    }
+
+    public pure function update-status(kind: string, value: string) -> string {
+        if (kind == "checking") { return @tr("Checking…"); }
+        if (kind == "none") { return @tr("OpenDelay is up to date."); }
+        if (kind == "available") { return @tr("Version {} is available.", value); }
+        if (kind == "error") { return @tr("Could not check for updates: {}", value); }
+        if (kind == "downloading") { return @tr("Downloading and verifying the signature…"); }
+        if (kind == "saved") { return @tr("Signature verified. Saved to {}.", value); }
+        if (kind == "failed") { return @tr("Download failed: {}", value); }
+        ""
     }
 
     public pure function system-default() -> string {

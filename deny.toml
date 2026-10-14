@@ -23,8 +23,10 @@ allow = [
     "Unicode-3.0",
     "OFL-1.1",
     # Not in the project's original list but GPL-3.0-compatible per the FSF:
-    # Boost (Slint's Windows clipboard: clipboard-win, error-code).
+    # Boost (Slint's Windows clipboard: clipboard-win, error-code) and the
+    # Unlicense (ksni, Slint's Linux tray backend).
     "BSL-1.0",
+    "Unlicense",
 ]
 confidence-threshold = 0.93
 unused-allowed-license = "allow"

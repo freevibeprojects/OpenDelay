@@ -6,10 +6,13 @@ pub mod app;
 pub mod conn;
 pub mod diag;
 pub mod engine;
+pub mod health;
+pub mod net;
 pub mod relay;
 pub mod routes;
 pub mod session;
 pub mod settings;
+pub mod update;
 pub mod upstream;
 pub mod url;
 

@@ -11,7 +11,11 @@ publish = false
 opendelay-core = { path = "../core" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 sys-locale = "0.3"
-slint = { version = "1.18", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "accessibility", "compat-1-2"] }
+slint = { version = "1.18", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "accessibility", "compat-1-2", "system-tray"] }
+global-hotkey = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
 
 [build-dependencies]
 slint-build = "1.18"

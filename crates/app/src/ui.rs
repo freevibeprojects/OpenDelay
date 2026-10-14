@@ -4,13 +4,16 @@
 //! second, and every 100 ms for a few seconds after a command or while a
 //! transition runs.
 
-use crate::platform;
-use crate::{AppState, Choice, LogItem, MainWindow, RouteItem, StreamItem, Strings, Theme};
+use crate::hotkeys::{self, Binder, Which};
+use crate::{AppState, Choice, Finding, LogItem, MainWindow, RouteItem, StreamItem, Strings, Theme, Tray};
+use crate::{autostart, platform};
 use opendelay_core::app::{Action, App, Reply, Status};
+use opendelay_core::net::{self, TwitchIngest};
 use opendelay_core::routes::{PRESETS, Problem, Route, TWITCH_AUTO};
 use opendelay_core::settings::{ListenerMode, Settings};
+use opendelay_core::update::{self, UpdateInfo};
 use opendelay_core::url::UpstreamUrl;
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -56,15 +59,22 @@ fn log_label(id: &str) -> String {
 #[derive(Default)]
 struct Shown {
     routes: Vec<RouteItem>,
+    findings: Vec<Finding>,
     streams: Vec<StreamItem>,
     settings: Option<Settings>,
 }
 
 pub struct Ui {
     window: MainWindow,
+    /// `None` when the platform has no tray (closing the window then quits).
+    tray: Option<Tray>,
     app: Arc<App>,
+    rt: tokio::runtime::Handle,
     shown: RefCell<Shown>,
     fast_until: Cell<Instant>,
+    hotkeys: RefCell<Binder>,
+    twitch: RefCell<Vec<TwitchIngest>>,
+    update: RefCell<Option<UpdateInfo>>,
 }
 
 impl Ui {
@@ -119,6 +129,9 @@ impl Ui {
         s.set_state(ss(st.state));
         let active = st.connected && matches!(st.delay.state, "delayed" | "buffering" | "draining");
         s.set_delay_active(active);
+        if let Some(t) = &self.tray {
+            t.set_delay_active(active);
+        }
         s.set_current_delay_s(st.delay.current_ms.div_ceil(1000) as i32);
         s.set_target_delay_s((st.delay.target_ms / 1000) as i32);
         s.set_configured_delay_s((st.delay.configured_ms / 1000) as i32);
@@ -146,6 +159,32 @@ impl Ui {
         s.set_listener_mode(ss(if st.listener.configured_mode == ListenerMode::Lan { "lan" } else { "local" }));
         s.set_restart_required(st.listener.restart_required);
         s.set_lan_addresses(ss(st.listener.lan_addresses.join(", ")));
+
+        let health = st.health.clone().unwrap_or_default();
+        let findings: Vec<Finding> = health
+            .findings
+            .iter()
+            .map(|f| Finding {
+                severity: ss(format!("{:?}", f.severity).to_lowercase()),
+                code: ss(f.code),
+                value: ss(&f.value),
+                limit: ss(&f.limit),
+            })
+            .collect();
+        if self.shown.borrow().findings != findings {
+            s.set_findings(model(findings.clone()));
+            self.shown.borrow_mut().findings = findings;
+        }
+        s.set_health_codec(ss(health.codec.clone().unwrap_or_default()));
+        s.set_health_resolution(ss(match (health.width, health.height) {
+            (Some(w), Some(h)) => format!("{w}×{h}"),
+            _ => String::new(),
+        }));
+        s.set_health_gop(ss(health
+            .keyframe_interval_ms
+            .map_or(String::new(), |ms| format!("{:.1} s", ms as f64 / 1000.0))));
+        s.set_health_b_frames(health.b_frames);
+        s.set_health_frames(health.frames.min(i32::MAX as u64) as i32);
 
         let streams: Vec<StreamItem> = st
             .streams
@@ -202,10 +241,10 @@ impl Ui {
         s.set_background_animation(st.background_animation);
         s.set_overlay_color(ss(&st.overlay_color));
         s.set_custom_delay_s(st.hotkeys.custom_delay_secs as i32);
-        s.set_hk_enable(ss(&st.hotkeys.enable_delay));
-        s.set_hk_go_live(ss(&st.hotkeys.go_live));
-        s.set_hk_overlay(ss(&st.hotkeys.toggle_overlay));
-        s.set_hk_custom(ss(&st.hotkeys.custom_delay));
+        s.set_hk_enable(ss(hotkeys::display(&st.hotkeys.enable_delay)));
+        s.set_hk_go_live(ss(hotkeys::display(&st.hotkeys.go_live)));
+        s.set_hk_overlay(ss(hotkeys::display(&st.hotkeys.toggle_overlay)));
+        s.set_hk_custom(ss(hotkeys::display(&st.hotkeys.custom_delay)));
 
         let system = self.strings().invoke_system_default();
         let mut langs = vec![Choice { value: ss(""), label: system.clone() }];
@@ -217,7 +256,8 @@ impl Ui {
 
         let auto = self.strings().invoke_twitch_auto();
         let mut servers = vec![Choice { value: ss(TWITCH_AUTO), label: auto.clone() }];
-        if st.twitch_server != TWITCH_AUTO {
+        servers.extend(self.twitch.borrow().iter().map(|i| Choice { value: ss(&i.url), label: ss(&i.name) }));
+        if !servers.iter().any(|c| c.value == st.twitch_server) {
             let host = UpstreamUrl::parse(&st.twitch_server).map(|u| u.host).unwrap_or_default();
             servers.push(Choice { value: ss(&st.twitch_server), label: ss(host) });
         }
@@ -260,8 +300,11 @@ impl Ui {
             upstream: item.upstream.trim().to_owned(),
             enabled: item.enabled,
         };
-        let result =
-            if route.id.is_empty() { self.app.add_route(route) } else { self.app.update_route(&route.id.clone(), route) };
+        let result = if route.id.is_empty() {
+            self.app.add_route(route)
+        } else {
+            self.app.update_route(&route.id.clone(), route)
+        };
         match result {
             Ok(_) => {
                 self.refresh();
@@ -307,6 +350,132 @@ impl Ui {
     }
 }
 
+impl Ui {
+    /// Quit: at once when nothing streams, otherwise refuse new encoders and
+    /// wait (bounded) for the streams to end (SPEC §3.4).
+    fn quit(self: &Rc<Self>) {
+        if self.app.relay.sessions().is_empty() {
+            let _ = slint::quit_event_loop();
+            return;
+        }
+        let _ = self.window.show();
+        self.state().set_quitting(true);
+        let app = self.app.clone();
+        let done = self.rt.spawn(async move { app.shutdown().await });
+        let _ = slint::spawn_local(async move {
+            let _ = done.await;
+            let _ = slint::quit_event_loop();
+        });
+    }
+
+    fn quit_now(&self) {
+        self.app.relay.emergency_stop();
+        let _ = slint::quit_event_loop();
+    }
+
+    fn show_window(&self) {
+        let _ = self.window.show();
+        self.window.window().set_minimized(false);
+    }
+
+    fn fetch_twitch_servers(self: &Rc<Self>, announce: bool) {
+        let job = self.rt.spawn_blocking(net::twitch_ingests);
+        let ui = self.clone();
+        let _ = slint::spawn_local(async move {
+            match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(list) => {
+                    *ui.twitch.borrow_mut() = list;
+                    ui.shown.borrow_mut().settings = None;
+                    ui.refresh();
+                    if announce {
+                        ui.state().invoke_report(ss("twitch-list"), true, ss(""), ss(""));
+                    }
+                }
+                Err(e) if announce => ui.toast_problem("network", &e),
+                Err(_) => {}
+            }
+        });
+    }
+
+    fn set_update_status(&self, kind: &str, value: &str) {
+        self.state().set_update_status(self.strings().invoke_update_status(ss(kind), ss(value)));
+    }
+
+    fn check_update(self: &Rc<Self>) {
+        self.set_update_status("checking", "");
+        let job = self.rt.spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")));
+        let ui = self.clone();
+        let _ = slint::spawn_local(async move {
+            match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(Some(info)) => {
+                    ui.set_update_status("available", &info.version);
+                    ui.state().set_update_available(true);
+                    *ui.update.borrow_mut() = Some(info);
+                }
+                Ok(None) => ui.set_update_status("none", ""),
+                Err(e) => ui.set_update_status("error", &e),
+            }
+        });
+    }
+
+    /// Only on the user's request: download, verify the signature, keep the file.
+    fn download_update(self: &Rc<Self>) {
+        let Some(info) = self.update.borrow().clone() else { return };
+        let Some(dir) = self.app.log_dir().and_then(|d| d.parent()).map(|d| d.join("updates")) else { return };
+        self.set_update_status("downloading", "");
+        let job = self.rt.spawn_blocking(move || update::download(&info, &dir));
+        let ui = self.clone();
+        let _ = slint::spawn_local(async move {
+            match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(path) => {
+                    ui.set_update_status("saved", &path.to_string_lossy());
+                    if let Some(folder) = path.parent() {
+                        platform::open(&folder.to_string_lossy());
+                    }
+                }
+                Err(e) => ui.set_update_status("failed", &e),
+            }
+        });
+    }
+
+    fn apply_hotkeys(&self) {
+        let failed = self.hotkeys.borrow_mut().apply(&self.app.settings().hotkeys);
+        if !failed.is_empty() {
+            self.toast_problem("hotkey_taken", "");
+        }
+    }
+
+    fn capture_hotkey(&self, which: &str, text: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) -> SharedString {
+        let Some(which) = Which::parse(which) else { return SharedString::default() };
+        let combo = match hotkeys::from_key(text, ctrl, alt, shift, meta)
+            .and_then(|c| self.hotkeys.borrow().try_register(&c, which).map(|_| c))
+        {
+            Ok(c) => c,
+            Err(code) => return self.strings().invoke_problem(ss(code), ss("")),
+        };
+        let err = self.save(|s| *which.slot(&mut s.hotkeys) = combo);
+        if err.is_empty() {
+            self.apply_hotkeys();
+        }
+        err
+    }
+
+    fn on_hotkey(&self, which: Which) {
+        match which {
+            Which::Enable => self.act(Action::EnableDelay { seconds: None }, "enable"),
+            Which::GoLive => self.act(Action::GoLive, "golive"),
+            Which::Overlay => {
+                let visible = !self.app.status().overlay_visible;
+                self.act(Action::SetOverlayVisible { visible }, if visible { "overlay-on" } else { "overlay-off" })
+            }
+            Which::Custom => {
+                let secs = self.app.settings().hotkeys.custom_delay_secs as f64;
+                self.act(Action::EnableDelay { seconds: Some(secs) }, "enable")
+            }
+        };
+    }
+}
+
 fn open_url(key: &str) {
     let base = env!("CARGO_PKG_REPOSITORY");
     let url = match key {
@@ -319,9 +488,20 @@ fn open_url(key: &str) {
 }
 
 /// Build the window, wire every callback and start polling.
-pub fn create(app: Arc<App>) -> Result<Rc<Ui>, slint::PlatformError> {
+pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint::PlatformError> {
     let window = MainWindow::new()?;
-    let ui = Rc::new(Ui { window, app, shown: RefCell::default(), fast_until: Cell::new(Instant::now()) });
+    let tray = Tray::new().ok();
+    let ui = Rc::new(Ui {
+        window,
+        tray,
+        app,
+        rt,
+        shown: RefCell::default(),
+        fast_until: Cell::new(Instant::now()),
+        hotkeys: RefCell::new(Binder::new()),
+        twitch: RefCell::default(),
+        update: RefCell::default(),
+    });
     let settings = ui.app.settings();
     ui.set_language(&settings.language);
 
@@ -346,8 +526,24 @@ pub fn create(app: Arc<App>) -> Result<Rc<Ui>, slint::PlatformError> {
             .collect(),
     ));
     s.set_onboarding_open(!settings.onboarding_complete);
+    if !ui.hotkeys.borrow().available() {
+        s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_unsupported"), ss("")));
+    } else if hotkeys::wayland() {
+        s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_wayland"), ss("")));
+    }
+    ui.apply_hotkeys();
+    if settings.start_with_os {
+        // keep the entry pointing at this executable
+        let _ = autostart::set(true);
+    }
     ui.refresh();
     ui.refresh_logs();
+    if settings.routes.iter().any(|r| r.preset == "twitch") {
+        ui.fetch_twitch_servers(false);
+    }
+    if settings.update_check {
+        ui.check_update();
+    }
 
     // A weak handle per callback keeps the Ui free of reference cycles.
     macro_rules! with_ui {
@@ -457,6 +653,59 @@ pub fn create(app: Arc<App>) -> Result<Rc<Ui>, slint::PlatformError> {
     }));
     s.on_refresh_logs(with_ui!(|u| u.refresh_logs()));
     s.on_finish_onboarding(with_ui!(|u, preset, server| u.finish_onboarding(&preset, &server)));
+    s.on_refresh_twitch_servers(with_ui!(|u| u.fetch_twitch_servers(true)));
+    s.on_check_update(with_ui!(|u| u.check_update()));
+    s.on_download_update(with_ui!(|u| u.download_update()));
+    s.on_capture_hotkey(with_ui!(|u, which, text, ctrl, alt, shift, meta| {
+        u.capture_hotkey(&which, &text, ctrl, alt, shift, meta)
+    }));
+    s.on_clear_hotkey(with_ui!(|u, which| {
+        if let Some(w) = Which::parse(&which) {
+            u.save(|s| w.slot(&mut s.hotkeys).clear());
+            u.apply_hotkeys();
+        }
+    }));
+    s.on_set_start_with_os(with_ui!(|u, on| {
+        match autostart::set(on) {
+            Ok(()) => {
+                u.save(|s| s.start_with_os = on);
+            }
+            Err(e) => {
+                u.toast_problem("autostart", &e);
+                u.shown.borrow_mut().settings = None;
+                u.refresh();
+            }
+        }
+    }));
+    s.on_quit(with_ui!(|u| u.quit()));
+    s.on_quit_now(with_ui!(|u| u.quit_now()));
+
+    if let Some(t) = &ui.tray {
+        let _ = t.show();
+        t.on_show_window(with_ui!(|u| u.show_window()));
+        t.on_toggle_delay(with_ui!(|u| {
+            let name = if u.app.status().delay.state == "live" { "enable" } else { "golive" };
+            u.act(Action::ToggleDelay, name);
+        }));
+        t.on_go_live(with_ui!(|u| {
+            u.act(Action::GoLive, "golive");
+        }));
+        t.on_emergency_stop(with_ui!(|u| {
+            u.act(Action::EmergencyStop, "emergency");
+        }));
+        t.on_quit(with_ui!(|u| u.quit()));
+    }
+
+    // Closing the window keeps OpenDelay in the tray unless the user chose to
+    // quit (or there is no tray to come back from).
+    ui.window.window().on_close_requested(with_ui!(|u| {
+        if u.app.settings().quit_on_close || u.tray.is_none() {
+            u.quit();
+            CloseRequestResponse::KeepWindowShown
+        } else {
+            CloseRequestResponse::HideWindow
+        }
+    }));
 
     Ok(ui)
 }
@@ -464,6 +713,10 @@ pub fn create(app: Arc<App>) -> Result<Rc<Ui>, slint::PlatformError> {
 impl Ui {
     pub fn window(&self) -> &MainWindow {
         &self.window
+    }
+
+    pub fn has_tray(&self) -> bool {
+        self.tray.is_some()
     }
 
     /// Poll status: every second, or every 100 ms right after a command and
@@ -474,6 +727,10 @@ impl Ui {
         let last = Cell::new(Instant::now());
         timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             let Some(u) = weak.upgrade() else { return };
+            let pressed = u.hotkeys.borrow().pressed();
+            for which in pressed {
+                u.on_hotkey(which);
+            }
             let now = Instant::now();
             let state = u.state().get_state();
             let busy = now < u.fast_until.get() || state == "buffering" || state == "draining";

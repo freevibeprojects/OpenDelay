@@ -166,3 +166,36 @@ Each entry: the decision, then why.
   placeholder (`example.invalid`) until the project is published.
 - `cargo run -p opendelay --example screenshot --features screenshot -- DIR`
   renders every page offscreen (software renderer) for visual review.
+
+## Integrations
+
+- **Health checks** (`crates/core/src/health.rs`): keyframe interval warns
+  above 2.5 s (high above 5 s) and recommends 2 s; "keyframes missing" after
+  10 s without one; B-frames are inferred from non-zero composition times
+  (3 frames of evidence); timestamp findings count backwards steps and gaps
+  over 1 s; "slow start" when the first keyframe arrives more than 5 s after
+  publishing; the only built-in resolution limit is Kick at 1920×1080.
+  Findings are logged once per session.
+- **Twitch servers** come from Twitch's public ingest list
+  (`https://ingest.twitch.tv/ingests`), fetched at startup when a Twitch route
+  exists and on demand. Accepted hosts: `live.twitch.tv`, `*.twitch.tv`,
+  `*.contribute.live-video.net`, `*.global-contribute.live-video.net`, plain
+  RTMP on port 1935.
+- **Updates**: off by default; GitHub "latest release" JSON; download only on
+  request, saved to `<data dir>/updates` after Ed25519 verification of
+  `<asset>.sig`; nothing is executed. Feed URL and public key are placeholders
+  (verification fails closed).
+- **Tray**: Slint's built-in `SystemTrayIcon` (Win32 / StatusNotifierItem), so
+  no GTK dependency. Linux defaults to "quit on close" because Slint cannot
+  report whether a tray host exists.
+- **Quitting** with active streams shows a "waiting for streams" panel while
+  the relay refuses new encoders and waits up to 10 s; "Quit now" forces it.
+- **Hotkeys** are stored in `global-hotkey` notation (`shift+control+KeyD`).
+  A shortcut needs Ctrl, Alt or Super unless it is a function key.
+- **Licences beyond the original list**: `BSL-1.0` (Slint's Windows clipboard)
+  and `Unlicense` (offered as `MIT OR Unlicense` by several crates and alone by
+  `ksni`, Slint's Linux tray) are both GPL-3.0-compatible per the FSF and are
+  allowed in `deny.toml`.
+- **Web pages** (dock, overlay, setup) take their strings from
+  `crates/core/web/lang/<code>.json`, embedded at build time by the core
+  build script; a new language is a new JSON file.

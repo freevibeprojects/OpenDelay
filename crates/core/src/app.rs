@@ -100,6 +100,7 @@ pub struct StreamStatus {
     pub recovery_attempt: u32,
     pub last_error: Option<String>,
     pub delay: DelayStatus,
+    pub health: crate::health::HealthReport,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -124,6 +125,8 @@ pub struct Status {
     pub uptime_ms: u64,
     pub bitrate_kbps: u64,
     pub delay: DelayStatus,
+    /// Health of the first stream (each stream also carries its own).
+    pub health: Option<crate::health::HealthReport>,
     pub streams: Vec<StreamStatus>,
     pub overlay_visible: bool,
     pub overlay_color: String,
@@ -424,6 +427,7 @@ impl App {
             uptime_ms: primary.map_or(0, |p| p.uptime_ms),
             bitrate_kbps: primary.map_or(0, |p| p.bitrate_kbps),
             delay: primary.map_or(idle_delay, |p| p.delay.clone()),
+            health: primary.map(|p| p.health.clone()),
             streams,
             overlay_visible: self.overlay_visible.load(Ordering::SeqCst),
             overlay_color: settings.overlay_color.clone(),
@@ -453,6 +457,7 @@ impl App {
             recovery_attempt: info.recovery_attempt,
             last_error: info.last_error,
             delay: delay_status(&s.engine().status(now, cfg.delay), cfg),
+            health: s.health(),
         }
     }
 
