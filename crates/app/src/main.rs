@@ -14,8 +14,10 @@ use opendelay_core::app::{App, AppOptions, HTTP_PORT, RTMP_PORT};
 fn main() {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("tokio runtime");
     let app = App::new(AppOptions::default());
-    let rtmp = rt.block_on(app.start_rtmp(RTMP_PORT));
-    let http = rt.block_on(app.start_http(HTTP_PORT));
+    // Ports can be moved when another program already uses the defaults.
+    let port = |var: &str, default: u16| std::env::var(var).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
+    let rtmp = rt.block_on(app.start_rtmp(port("OPENDELAY_RTMP_PORT", RTMP_PORT)));
+    let http = rt.block_on(app.start_http(port("OPENDELAY_HTTP_PORT", HTTP_PORT)));
 
     let ui = match ui::create(app.clone(), rt.handle().clone()) {
         Ok(ui) => ui,

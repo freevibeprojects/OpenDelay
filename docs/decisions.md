@@ -199,3 +199,6 @@ Each entry: the decision, then why.
 - **Web pages** (dock, overlay, setup) take their strings from
   `crates/core/web/lang/<code>.json`, embedded at build time by the core
   build script; a new language is a new JSON file.
+- **Ports**: 1935 (RTMP) and 3000 (HTTP) by default as specified;
+  `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` move them when another program
+  already listens there (the app otherwise shows an error toast).

@@ -70,6 +70,17 @@ cargo install cargo-xwin
 cargo xwin build --release --target x86_64-pc-windows-msvc
 ```
 
+cargo-xwin needs `clang-cl`, `llvm-lib` and `lld-link` on the `PATH`. If your
+distribution's LLVM/LLD packages are not installed, the Rust toolchain's
+copies work through symlinks (both are multi-call binaries):
+
+```sh
+rustup component add llvm-tools
+B=$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin
+mkdir -p ~/.local/xwin-bin && ln -sf $B/llvm-ar ~/.local/xwin-bin/llvm-lib && ln -sf $B/rust-lld ~/.local/xwin-bin/lld-link
+PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windows-msvc
+```
+
 ### Platform notes
 
 - **Tray icon (Linux)** uses the StatusNotifierItem protocol (KDE, most other
@@ -84,6 +95,8 @@ cargo xwin build --release --target x86_64-pc-windows-msvc
 - Settings live in `%APPDATA%\OpenDelay` / `~/.config/opendelay`, session logs
   in `%LOCALAPPDATA%\OpenDelay\logs` / `~/.local/share/opendelay/logs`
   (override with `OPENDELAY_CONFIG_DIR` / `OPENDELAY_DATA_DIR`).
+- The RTMP listener uses port 1935 and the local web server port 3000; set
+  `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
 
 ### Checks
 
