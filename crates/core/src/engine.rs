@@ -138,6 +138,8 @@ pub struct EngineStatus {
     pub progress: Option<f32>,
     /// Set when the bitrate makes the buffer target unsustainable.
     pub degraded: Option<String>,
+    /// With `degraded`: the buffer length that fits in memory.
+    pub buffer_limit_ms: Option<u64>,
 }
 
 /// Result of a successful enable.
@@ -647,7 +649,8 @@ impl Engine {
         };
         let max_delay = self.keys.front().map_or(Duration::ZERO, |&k| self.age(k, now));
         let bps = self.bytes_per_sec();
-        let degraded = self.sustainable_max().filter(|max| self.retain > *max).map(|max| {
+        let limit = self.sustainable_max().filter(|max| self.retain > *max);
+        let degraded = limit.map(|max| {
             format!(
                 "At {:.1} Mbit/s only about {} s fit in memory; the buffer is limited to that.",
                 bps.unwrap_or(0.0) * 8.0 / 1e6,
@@ -666,6 +669,7 @@ impl Engine {
             bitrate_bps: bps.map_or(0, |b| (b * 8.0) as u64),
             progress,
             degraded,
+            buffer_limit_ms: limit.map(ms),
         }
     }
 }

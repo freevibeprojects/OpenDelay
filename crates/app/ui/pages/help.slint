@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Help: project documentation, community, troubleshooting, about.
+
+import { Theme, Icons } from "../theme.slint";
+import { Card, Body, SectionTitle, Link } from "../widgets.slint";
+import { AppState } from "../state.slint";
+
+component Tip {
+    in property <string> title;
+    in property <string> text;
+    VerticalLayout {
+        spacing: 3px;
+        Text { text: root.title; color: Theme.text-primary; font-size: 13px; font-weight: 600; wrap: word-wrap; }
+        Body { text: root.text; font-size: 12px; }
+    }
+}
+
+export component HelpPage {
+    VerticalLayout {
+        spacing: 16px;
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                SectionTitle { text: @tr("Documentation and community"); }
+                Link { text: @tr("User guide"); clicked => { AppState.open-url("docs"); } }
+                Link { text: @tr("Controller protocol (Stream Deck, Companion, scripts)"); clicked => { AppState.open-url("protocol"); } }
+                Link { text: @tr("Report a problem or ask a question"); clicked => { AppState.open-url("issues"); } }
+                Link { text: @tr("Source code"); clicked => { AppState.open-url("source"); } }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                SectionTitle { text: @tr("Troubleshooting"); }
+                Tip {
+                    title: @tr("The encoder cannot connect");
+                    text: @tr("Check that the server URL in your encoder matches a route (for example rtmp://127.0.0.1:1935/twitch) and that the route is enabled.");
+                }
+                Tip {
+                    title: @tr("Switching the delay takes long or pauses");
+                    text: @tr("The delay can only start on a keyframe. Set the keyframe interval in your encoder to 2 seconds and keep the buffer longer than the delay.");
+                }
+                Tip {
+                    title: @tr("The platform rejects the stream");
+                    text: @tr("OpenDelay forwards your stream key unchanged. Check the key in your encoder and the server URL of the route.");
+                }
+                Tip {
+                    title: @tr("Hotkeys do nothing");
+                    text: @tr("On Linux, global hotkeys need an X11 session. Under Wayland, bind your desktop's shortcuts to the controller WebSocket or HTTP API instead.");
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 8px;
+                SectionTitle { text: @tr("About"); }
+                Body { text: @tr("OpenDelay {} is free software under the GNU General Public License version 3. It collects no telemetry.", AppState.version); }
+                Body { text: @tr("Third-party components and their licences are listed in THIRD_PARTY_LICENSES.md. The Inter typeface is used under the SIL Open Font License."); }
+            }
+        }
+    }
+}

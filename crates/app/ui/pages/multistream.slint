@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Multistream: routes (local path → platform) with add / edit / delete / enable.
+
+import { Theme, Icons } from "../theme.slint";
+import { Button, ButtonKind, IconButton, Card, Pill, Toggle, CopyField, TextField, Select, Modal, Body, SectionTitle } from "../widgets.slint";
+import { AppState, Strings, RouteItem } from "../state.slint";
+
+export global RouteEditor {
+    in-out property <bool> open;
+    in-out property <RouteItem> route;
+    in-out property <string> error;
+    in-out property <bool> confirm-delete;
+
+    public function edit(r: RouteItem) {
+        self.route = r;
+        self.error = "";
+        self.confirm-delete = false;
+        self.open = true;
+    }
+
+    public function add() {
+        self.route = AppState.presets[1];
+        self.error = "";
+        self.confirm-delete = false;
+        self.open = true;
+    }
+}
+
+component PresetChip {
+    in property <RouteItem> preset;
+    in property <bool> selected;
+    callback clicked;
+    height: 34px;
+    accessible-role: radio-button;
+    accessible-checked: root.selected;
+    accessible-label: Strings.preset-name(root.preset.preset);
+    accessible-action-default => { root.clicked(); }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    Rectangle {
+        border-radius: Theme.radius-md;
+        background: root.selected ? Theme.accent-muted : ta.has-hover ? Theme.bg-surface-hover : Theme.bg-base;
+        border-width: 1px;
+        border-color: root.selected ? Theme.accent : fs.has-focus ? Theme.accent-hover : Theme.border-default;
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            Text {
+                text: Strings.preset-name(root.preset.preset);
+                color: root.selected ? Theme.text-primary : Theme.text-secondary;
+                font-size: 13px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component RouteEditorModal inherits Modal {
+    title: RouteEditor.route.id == "" ? @tr("Add a route") : @tr("Edit route");
+    card-width: 560px;
+    close => { RouteEditor.open = false; }
+
+    property <bool> is-new: RouteEditor.route.id == "";
+    property <bool> is-twitch: RouteEditor.route.preset == "twitch";
+
+    if root.is-new: VerticalLayout {
+        spacing: 8px;
+        Text { text: @tr("Platform"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for p in AppState.presets: PresetChip {
+                preset: p;
+                selected: RouteEditor.route.preset == p.preset;
+                clicked => {
+                    RouteEditor.route = p;
+                    RouteEditor.error = "";
+                }
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        Text { text: @tr("Name"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+        TextField {
+            label: @tr("Name");
+            text: RouteEditor.route.name;
+            edited(t) => { RouteEditor.route.name = t; }
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        Text { text: @tr("Local path"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+        TextField {
+            label: @tr("Local path");
+            text: RouteEditor.route.path;
+            mono: true;
+            edited(t) => { RouteEditor.route.path = t; }
+        }
+        Body {
+            text: @tr("Your encoder publishes to rtmp://127.0.0.1:1935/{}. Path changes take effect the next time the encoder connects.", RouteEditor.route.path);
+            font-size: 12px;
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        Text {
+            text: root.is-twitch ? @tr("Twitch server") : @tr("Platform server URL");
+            color: Theme.text-secondary;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        if root.is-twitch: Select {
+            label: @tr("Twitch server");
+            choices: AppState.twitch-servers;
+            value: AppState.twitch-server;
+            current: AppState.twitch-server-label;
+            chosen(v) => {
+                RouteEditor.route.upstream = v;
+                AppState.set-twitch-server(v);
+            }
+        }
+        if !root.is-twitch: TextField {
+            label: @tr("Platform server URL");
+            placeholder: "rtmp://… or rtmps://…";
+            text: RouteEditor.route.upstream;
+            mono: true;
+            edited(t) => { RouteEditor.route.upstream = t; }
+        }
+        Body {
+            text: root.is-twitch
+                ? @tr("Only Twitch ingest servers are accepted. Your stream key stays in your encoder.")
+                : @tr("Paste the server URL from your platform without the stream key; the key stays in your encoder.");
+            font-size: 12px;
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        Toggle {
+            label: @tr("Enabled");
+            checked: RouteEditor.route.enabled;
+            toggled(on) => { RouteEditor.route.enabled = on; }
+        }
+        Text { text: @tr("Enabled"); color: Theme.text-primary; font-size: 13px; vertical-alignment: center; }
+    }
+    if RouteEditor.error != "": Text {
+        text: RouteEditor.error;
+        color: Theme.error;
+        font-size: 13px;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        padding-top: 6px;
+        if !root.is-new && RouteEditor.route.id != "twitch": Button {
+            text: RouteEditor.confirm-delete ? @tr("Click again to delete") : @tr("Delete");
+            kind: RouteEditor.confirm-delete ? ButtonKind.danger : ButtonKind.ghost;
+            show-icon: true;
+            icon: Icons.trash;
+            clicked => {
+                if (!RouteEditor.confirm-delete) {
+                    RouteEditor.confirm-delete = true;
+                } else {
+                    RouteEditor.error = AppState.delete-route(RouteEditor.route.id);
+                    if (RouteEditor.error == "") {
+                        RouteEditor.open = false;
+                        AppState.toast(@tr("Route deleted"), "success");
+                    }
+                }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: @tr("Cancel");
+            kind: ButtonKind.ghost;
+            clicked => { RouteEditor.open = false; }
+        }
+        Button {
+            text: @tr("Save");
+            kind: ButtonKind.primary;
+            clicked => {
+                RouteEditor.error = AppState.save-route(RouteEditor.route);
+                if (RouteEditor.error == "") {
+                    RouteEditor.open = false;
+                    AppState.toast(@tr("Route saved"), "success");
+                }
+            }
+        }
+    }
+}
+
+component RouteCard inherits Card {
+    in property <RouteItem> route;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: root.route.name;
+                color: Theme.text-primary;
+                font-size: 15px;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Pill { text: Strings.preset-name(root.route.preset); color: Theme.accent-hover; }
+            if root.route.streaming: Pill { text: @tr("Streaming"); color: Theme.success; pulse: true; }
+            if !root.route.enabled: Pill { text: @tr("Disabled"); color: Theme.text-secondary; }
+            Rectangle { horizontal-stretch: 1; }
+            VerticalLayout {
+                alignment: center;
+                Toggle {
+                    label: @tr("Enabled");
+                    checked: root.route.enabled;
+                    enabled: !root.route.streaming;
+                    toggled(on) => {
+                        let err = AppState.set-route-enabled(root.route.id, on);
+                        if (err != "") {
+                            AppState.toast(err, "error");
+                        }
+                    }
+                }
+            }
+            IconButton {
+                icon: Icons.edit;
+                label: @tr("Edit route");
+                enabled: !root.route.streaming;
+                clicked => { RouteEditor.edit(root.route); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 3;
+                Text { text: @tr("Encoder server URL"); color: Theme.text-secondary; font-size: 12px; }
+                CopyField {
+                    value: root.route.local-url;
+                    label: @tr("Encoder server URL");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 2;
+                Text { text: @tr("Sends to"); color: Theme.text-secondary; font-size: 12px; }
+                Rectangle {
+                    min-height: 38px;
+                    Text {
+                        x: 0;
+                        text: root.route.host == "" ? @tr("No server set") : root.route.host;
+                        color: root.route.host == "" ? Theme.warning : Theme.text-primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        width: parent.width;
+                    }
+                }
+            }
+        }
+        if root.route.streaming: Body {
+            text: @tr("This route is streaming. Stop the stream in your encoder to edit, disable or delete it.");
+            font-size: 12px;
+        }
+    }
+}
+
+export component MultistreamPage {
+    VerticalLayout {
+        spacing: 16px;
+        HorizontalLayout {
+            spacing: 16px;
+            Body {
+                text: @tr("Each route has its own local path. Point one encoder output at each route to stream to several platforms at the same time.");
+                font-size: 13px;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            Button {
+                text: @tr("Add route");
+                kind: ButtonKind.primary;
+                show-icon: true;
+                icon: Icons.plus;
+                clicked => { RouteEditor.add(); }
+            }
+        }
+        for r in AppState.routes: RouteCard { route: r; }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 8px;
+                SectionTitle { text: @tr("Streaming to several platforms"); }
+                Body { text: @tr("Most encoders have a single stream output. To go live on more than one platform:"); }
+                Body { text: @tr("• OBS: add a second output with a multiple-output plugin, or use Aitum Vertical for a vertical stream, and give each output its own route URL."); }
+                Body { text: @tr("• Streamlabs and others: use one route per platform and switch the route in the encoder, or a restreaming service via the Restream preset."); }
+                Body { text: @tr("The delay settings apply to every live route at once."); }
+            }
+        }
+    }
+}

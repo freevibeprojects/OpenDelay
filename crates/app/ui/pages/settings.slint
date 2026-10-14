@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Settings: general, streaming (Twitch server, listener), updates, diagnostics.
+
+import { Theme, Icons } from "../theme.slint";
+import { Button, ButtonKind, IconButton, Card, Toggle, Select, Segmented, SettingRow, Body, SectionTitle } from "../widgets.slint";
+import { AppState } from "../state.slint";
+
+component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.border-subtle;
+}
+
+export component SettingsPage {
+    VerticalLayout {
+        spacing: 16px;
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 4px;
+                SectionTitle { text: @tr("General"); }
+                SettingRow {
+                    title: @tr("Start with the system");
+                    description: @tr("Open OpenDelay in the tray when you log in.");
+                    Toggle {
+                        label: @tr("Start with the system");
+                        checked: AppState.start-with-os;
+                        toggled(on) => { AppState.set-start-with-os(on); }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("When the window is closed");
+                    description: @tr("Keep relaying from the tray, or quit OpenDelay.");
+                    Segmented {
+                        label: @tr("When the window is closed");
+                        width: 240px;
+                        options: [@tr("Keep in tray"), @tr("Quit")];
+                        selected: AppState.quit-on-close ? 1 : 0;
+                        chosen(i) => { AppState.set-quit-on-close(i == 1); }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("Language");
+                    Select {
+                        label: @tr("Language");
+                        width: 220px;
+                        choices: AppState.languages;
+                        value: AppState.language;
+                        current: AppState.language-label;
+                        chosen(v) => { AppState.set-language(v); }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("Reduce motion");
+                    description: @tr("Turn off animations such as the rolling digits.");
+                    Toggle {
+                        label: @tr("Reduce motion");
+                        checked: AppState.reduce-motion;
+                        toggled(on) => { AppState.set-reduce-motion(on); }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("Animated background");
+                    Toggle {
+                        label: @tr("Animated background");
+                        checked: AppState.background-animation;
+                        toggled(on) => { AppState.set-background-animation(on); }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("Setup assistant");
+                    description: @tr("Walk through the first-run setup again.");
+                    Button {
+                        text: @tr("Open");
+                        clicked => { AppState.onboarding-open = true; }
+                    }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 4px;
+                SectionTitle { text: @tr("Streaming"); }
+                SettingRow {
+                    title: @tr("Twitch server");
+                    description: @tr("Automatic picks the closest Twitch ingest.");
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Select {
+                            label: @tr("Twitch server");
+                            width: 280px;
+                            list-width: 340px;
+                            choices: AppState.twitch-servers;
+                            value: AppState.twitch-server;
+                            current: AppState.twitch-server-label;
+                            chosen(v) => { AppState.set-twitch-server(v); }
+                        }
+                        IconButton {
+                            icon: Icons.refresh;
+                            label: @tr("Refresh the Twitch server list");
+                            size: 38px;
+                            clicked => { AppState.refresh-twitch-servers(); }
+                        }
+                    }
+                }
+                Divider { }
+                SettingRow {
+                    title: @tr("Accept encoders from");
+                    description: AppState.listener-mode == "lan"
+                        ? @tr("This computer and the local network ({}). Port 1935.", AppState.lan-addresses == "" ? @tr("no network address found") : AppState.lan-addresses)
+                        : @tr("This computer only (127.0.0.1). Port 1935.");
+                    Segmented {
+                        label: @tr("Accept encoders from");
+                        width: 280px;
+                        options: [@tr("This computer"), @tr("Local network")];
+                        selected: AppState.listener-mode == "lan" ? 1 : 0;
+                        chosen(i) => { AppState.set-listener-mode(i == 1 ? "lan" : "local"); }
+                    }
+                }
+                if AppState.restart-required: Text {
+                    text: @tr("Restart OpenDelay for the listener change to take effect.");
+                    color: Theme.warning;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 4px;
+                SectionTitle { text: @tr("Updates"); }
+                SettingRow {
+                    title: @tr("Check for updates");
+                    description: @tr("Ask the project's release feed for new versions. Nothing is downloaded without asking you.");
+                    Toggle {
+                        label: @tr("Check for updates");
+                        checked: AppState.update-check;
+                        toggled(on) => { AppState.set-update-check(on); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    padding-top: 6px;
+                    Button {
+                        text: @tr("Check now");
+                        clicked => { AppState.check-update(); }
+                    }
+                    if AppState.update-available: Button {
+                        text: @tr("Download and verify");
+                        kind: ButtonKind.primary;
+                        clicked => { AppState.download-update(); }
+                    }
+                    Body { text: AppState.update-status; vertical-alignment: center; horizontal-stretch: 1; }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                HorizontalLayout {
+                    SectionTitle { text: @tr("Diagnostics"); vertical-alignment: center; horizontal-stretch: 1; }
+                    IconButton {
+                        icon: Icons.refresh;
+                        label: @tr("Refresh");
+                        clicked => { AppState.refresh-logs(); }
+                    }
+                }
+                Body { text: @tr("One log file per stream session. Stream keys are never written to logs."); }
+                if AppState.logs.length == 0: Body { text: @tr("No session logs yet."); }
+                for log in AppState.logs: HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Image { source: Icons.document; colorize: Theme.text-secondary; width: 16px; height: 16px; }
+                    }
+                    Text { text: log.label; color: Theme.text-primary; font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; }
+                    Text { text: log.size; color: Theme.text-secondary; font-size: 12px; vertical-alignment: center; }
+                    Button {
+                        text: @tr("Open");
+                        kind: ButtonKind.ghost;
+                        clicked => { AppState.open-log(log.id); }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: @tr("Open logs folder");
+                        show-icon: true;
+                        icon: Icons.folder;
+                        clicked => { AppState.open-logs-folder(); }
+                    }
+                }
+            }
+        }
+    }
+}

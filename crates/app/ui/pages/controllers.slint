@@ -1,0 +1,168 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Controllers: global hotkeys and hardware controller (Stream Deck, ...) setup.
+
+import { Theme, Icons } from "../theme.slint";
+import { Button, ButtonKind, Card, CopyField, Body, SectionTitle, Link } from "../widgets.slint";
+import { AppState, Strings } from "../state.slint";
+
+component HotkeyRow {
+    in property <string> which;
+    in property <string> title;
+    in property <string> description;
+    in property <string> value;
+    property <bool> capturing;
+    min-height: 56px;
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text { text: root.title; color: Theme.text-primary; font-size: 14px; font-weight: 500; }
+            if root.description != "": Body { text: root.description; font-size: 12px; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                min-width: 200px;
+                height: 36px;
+                border-radius: Theme.radius-md;
+                background: root.capturing ? Theme.accent-muted : Theme.bg-base;
+                border-width: 1px;
+                border-color: root.capturing ? Theme.accent : Theme.border-default;
+                Text {
+                    text: root.capturing ? @tr("Press a key combination…") : root.value == "" ? @tr("Not set") : root.value;
+                    color: root.value == "" && !root.capturing ? Theme.text-secondary : Theme.text-primary;
+                    font-size: 13px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                capture := FocusScope {
+                    enabled: root.capturing;
+                    focus-changed-event => {
+                        if (!self.has-focus) {
+                            root.capturing = false;
+                        }
+                    }
+                    key-pressed(e) => {
+                        if (e.text == Key.Escape) {
+                            root.capturing = false;
+                            return accept;
+                        }
+                        if (e.text == Key.Shift || e.text == Key.Control || e.text == Key.Alt || e.text == Key.Meta
+                            || e.text == Key.ShiftR || e.text == Key.ControlR || e.text == Key.AltGr || e.text == Key.MetaR) {
+                            return accept;
+                        }
+                        let err = AppState.capture-hotkey(root.which, e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta);
+                        root.capturing = false;
+                        if (err != "") {
+                            AppState.toast(err, "error");
+                        } else {
+                            AppState.toast(@tr("Shortcut saved"), "success");
+                        }
+                        return accept;
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: @tr("Change");
+                clicked => {
+                    root.capturing = true;
+                    capture.focus();
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: @tr("Clear");
+                kind: ButtonKind.ghost;
+                enabled: root.value != "";
+                clicked => { AppState.clear-hotkey(root.which); }
+            }
+        }
+    }
+}
+
+export component ControllersPage {
+    VerticalLayout {
+        spacing: 16px;
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 6px;
+                SectionTitle { text: @tr("Global hotkeys"); }
+                Body { text: @tr("System-wide shortcuts work even while OBS or a game has focus. They are not set by default."); }
+                if AppState.hotkeys-note != "": Text {
+                    text: AppState.hotkeys-note;
+                    color: Theme.warning;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                Rectangle { height: 6px; }
+                HotkeyRow { which: "enable"; title: @tr("Enable delay"); value: AppState.hk-enable; }
+                HotkeyRow { which: "golive"; title: @tr("Go live"); value: AppState.hk-go-live; }
+                HotkeyRow { which: "overlay"; title: @tr("Show or hide the overlay"); value: AppState.hk-overlay; }
+                HotkeyRow {
+                    which: "custom";
+                    title: @tr("Custom delay");
+                    description: @tr("Enables the delay with {}.", Strings.duration(AppState.custom-delay-s));
+                    value: AppState.hk-custom;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Text { text: @tr("Custom delay length"); color: Theme.text-secondary; font-size: 13px; vertical-alignment: center; }
+                    Button {
+                        text: "−";
+                        min-width: 38px;
+                        pad: 0px;
+                        clicked => { AppState.set-custom-delay(max(5, AppState.custom-delay-s - 5)); }
+                    }
+                    Text {
+                        min-width: 70px;
+                        text: Strings.duration(AppState.custom-delay-s);
+                        color: Theme.text-primary;
+                        font-size: 14px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    Button {
+                        text: "+";
+                        min-width: 38px;
+                        pad: 0px;
+                        clicked => { AppState.set-custom-delay(min(600, AppState.custom-delay-s + 5)); }
+                    }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("Stream Deck and other controllers"); }
+                Body { text: @tr("Controllers such as an Elgato Stream Deck plugin, Touch Portal or Bitfocus Companion connect to this WebSocket address. Every delay action and live status updates are available."); }
+                CopyField {
+                    value: AppState.ws-url;
+                    label: @tr("Controller WebSocket");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+                Body { text: @tr("Scripts can also read the status over HTTP:"); }
+                CopyField {
+                    value: AppState.api-url;
+                    label: @tr("Status URL");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+                Link {
+                    text: @tr("Controller protocol documentation");
+                    clicked => { AppState.open-url("protocol"); }
+                }
+            }
+        }
+    }
+}

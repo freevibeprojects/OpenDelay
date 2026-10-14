@@ -9,7 +9,7 @@
 //! token in `X-OpenDelay-Token`; the token is only embedded in our own pages.
 
 use crate::app::{Action, App, Reply};
-use crate::routes::{PRESETS, Route};
+use crate::routes::{PRESETS, Problem, Route};
 use crate::settings::ListenerMode;
 use axum::body::Bytes;
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
@@ -147,17 +147,17 @@ async fn asset(Path(file): Path<String>) -> Response {
 }
 
 /// Envelope: success flag, message, code, fresh status, optional `data`.
-fn respond(app: &App, result: Result<String, String>, data: Value) -> Response {
+fn respond(app: &App, result: Result<String, Problem>, data: Value) -> Response {
     let ok = result.is_ok();
-    let mut v = serde_json::to_value(app.reply(result.map_err(|m| (m, "invalid_request")))).unwrap_or_default();
+    let mut v = serde_json::to_value(app.reply(result.map_err(|p| (p.message, p.code)))).unwrap_or_default();
     if !data.is_null() {
         v["data"] = data;
     }
     (if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST }, Json(v)).into_response()
 }
 
-fn parse<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, String> {
-    serde_json::from_slice(body).map_err(|e| format!("Invalid request body: {e}"))
+fn parse<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, Problem> {
+    serde_json::from_slice(body).map_err(|e| Problem::new("bad_request", format!("Invalid request body: {e}")))
 }
 
 async fn action(State(app): AppState, body: Bytes) -> Response {
