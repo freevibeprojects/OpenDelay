@@ -1,0 +1,251 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Bridge between the UI and the Rust side: status pushed in, actions out.
+
+import { Choice } from "widgets.slint";
+
+export struct RouteItem {
+    id: string,
+    name: string,
+    preset: string,
+    path: string,
+    upstream: string,
+    enabled: bool,
+    streaming: bool,
+    // rtmp://127.0.0.1:1935/<path>
+    local-url: string,
+    host: string,
+}
+
+export struct StreamItem {
+    route: string,
+    phase: string,
+    bitrate: string,
+    uptime: string,
+    delay: string,
+    error: string,
+}
+
+export struct Finding {
+    // low / medium / high
+    severity: string,
+    title: string,
+    detail: string,
+}
+
+export struct LogItem {
+    id: string,
+    label: string,
+    size: string,
+}
+
+export global AppState {
+    in property <string> version;
+    // ---- status ----
+    // offline / connecting / live / buffering / delayed / draining / recovering
+    in property <string> state: "offline";
+    in property <bool> delay-active;
+    in property <int> current-delay-s;
+    in property <int> target-delay-s;
+    in-out property <int> configured-delay-s: 30;
+    in property <int> buffer-s: 60;
+    in property <float> buffer-fill;
+    in property <string> buffer-text: "—";
+    in property <bool> ready;
+    // 0..1 while buffering/draining, -1 otherwise
+    in property <float> progress: -1;
+    // buffer length that fits in memory at this bitrate (-1: no limit)
+    in property <int> buffer-limit-s: -1;
+    in property <string> bitrate-text: "—";
+    in property <string> uptime-text: "—";
+    in property <int> recovery-attempt;
+    in property <string> last-error;
+    in property <bool> delay-mode: true;
+    in property <bool> emergency;
+    in property <[StreamItem]> streams;
+    in property <[Finding]> findings;
+    in property <string> health-summary;
+    in property <string> encoder-url: "rtmp://127.0.0.1:1935/twitch";
+    // ---- routes ----
+    in property <[RouteItem]> routes;
+    // destination presets (name/path/upstream defaults)
+    in property <[RouteItem]> presets;
+    // ---- overlay / dock / controllers ----
+    in property <bool> overlay-visible: true;
+    in property <string> overlay-color: "violet";
+    in property <string> overlay-url;
+    in property <string> dock-url;
+    in property <string> ws-url;
+    in property <string> api-url;
+    // ---- settings ----
+    in property <bool> start-with-os;
+    in property <bool> quit-on-close;
+    in property <string> language;
+    in property <string> language-label;
+    in property <[Choice]> languages;
+    in property <bool> update-check;
+    in property <string> update-status;
+    in property <bool> update-available;
+    in property <bool> reduce-motion;
+    in property <bool> background-animation: true;
+    in property <string> listener-mode: "local";
+    in property <bool> restart-required;
+    in property <string> lan-addresses;
+    in property <string> twitch-server;
+    in property <string> twitch-server-label;
+    in property <[Choice]> twitch-servers;
+    in property <string> hk-enable;
+    in property <string> hk-go-live;
+    in property <string> hk-overlay;
+    in property <string> hk-custom;
+    in property <int> custom-delay-s: 60;
+    in property <string> hotkeys-note;
+    in property <[LogItem]> logs;
+    in property <string> logs-folder;
+    in-out property <bool> onboarding-open;
+    // ---- toast ----
+    in-out property <string> toast-text;
+    in-out property <string> toast-kind;
+    in-out property <int> toast-serial;
+
+    // ---- actions ----
+    callback enable-delay();
+    callback go-live();
+    callback set-delay(int);
+    callback set-buffer(int);
+    callback set-delay-mode(bool);
+    callback toggle-overlay();
+    callback set-overlay-color(string);
+    callback emergency-stop();
+    callback clear-emergency();
+    // returns an error message, or "" on success
+    callback save-route(RouteItem) -> string;
+    callback delete-route(string) -> string;
+    callback set-route-enabled(string, bool) -> string;
+    callback set-start-with-os(bool);
+    callback set-quit-on-close(bool);
+    callback set-language(string);
+    callback set-update-check(bool);
+    callback check-update();
+    callback download-update();
+    callback set-reduce-motion(bool);
+    callback set-background-animation(bool);
+    callback set-listener-mode(string);
+    callback set-twitch-server(string);
+    callback refresh-twitch-servers();
+    // which: enable / golive / overlay / custom; key text + modifiers; "" clears
+    callback capture-hotkey(string, string, bool, bool, bool, bool) -> string;
+    callback clear-hotkey(string);
+    callback set-custom-delay(int);
+    callback open-url(string);
+    callback open-logs-folder();
+    callback open-log(string);
+    callback refresh-logs();
+    // preset id, server URL (TikTok/Custom) → error or ""
+    callback finish-onboarding(string, string) -> string;
+    callback quit();
+
+    public function toast(text: string, kind: string) {
+        self.toast-text = text;
+        self.toast-kind = kind;
+        self.toast-serial += 1;
+    }
+
+    // Toast for the result of an action (called from Rust).
+    public function report(action: string, ok: bool, code: string, detail: string) {
+        if (ok) {
+            self.toast(Strings.success(action), action == "emergency" ? "warning" : "success");
+        } else {
+            self.toast(Strings.refusal(code, detail), "warning");
+        }
+    }
+}
+
+// Translated texts shared by several pages.
+export global Strings {
+    public pure function state-label(state: string) -> string {
+        if (state == "live") { return @tr("Live"); }
+        if (state == "delayed") { return @tr("Delayed"); }
+        if (state == "buffering") { return @tr("Buffering"); }
+        if (state == "draining") { return @tr("Going live"); }
+        if (state == "recovering") { return @tr("Recovering"); }
+        if (state == "connecting") { return @tr("Connecting"); }
+        @tr("Offline")
+    }
+
+    public pure function preset-name(id: string) -> string {
+        if (id == "twitch") { return "Twitch"; }
+        if (id == "youtube") { return "YouTube"; }
+        if (id == "kick") { return "Kick"; }
+        if (id == "tiktok") { return "TikTok"; }
+        if (id == "restream") { return "Restream"; }
+        @tr("Custom")
+    }
+
+    // Refusal codes from the core (docs/controller-protocol.md).
+    public pure function refusal(code: string, detail: string) -> string {
+        if (code == "no_stream") { return @tr("No stream is connected yet. Start streaming in your encoder first."); }
+        if (code == "buffer_not_ready") { return @tr("The delay buffer is not ready yet. Try again in a moment."); }
+        if (code == "already_active") { return @tr("The delay is already on."); }
+        if (code == "already_live") { return @tr("You are already live."); }
+        if (code == "delay_mode_off") { return @tr("Delay mode is turned off."); }
+        if (code == "invalid_in_mode") { return @tr("That is not possible right now: {}", detail); }
+        if (code == "transition_in_progress") { return @tr("Please wait for the current transition to finish."); }
+        if (code == "upstream_recovering") { return @tr("The connection to the platform is recovering. Try again shortly."); }
+        if (code == "unsustainable") { return @tr("This delay does not fit in memory at the current bitrate."); }
+        if (code == "transport_error") { return @tr("The stream connection failed while applying the action."); }
+        if (code == "invalid_value") { return @tr("That value is out of range."); }
+        detail
+    }
+
+    public pure function success(action: string) -> string {
+        if (action == "enable") { return @tr("Delay on"); }
+        if (action == "enable-building") { return @tr("The delay is building up"); }
+        if (action == "golive") { return @tr("Going live"); }
+        if (action == "setdelay") { return @tr("Delay updated"); }
+        if (action == "setbuffer") { return @tr("Buffer length updated"); }
+        if (action == "mode-on") { return @tr("Delay mode on"); }
+        if (action == "mode-off") { return @tr("Delay mode off"); }
+        if (action == "overlay-on") { return @tr("Overlay shown"); }
+        if (action == "overlay-off") { return @tr("Overlay hidden"); }
+        if (action == "emergency") { return @tr("Emergency stop: every stream was disconnected"); }
+        if (action == "allow") { return @tr("Streaming allowed again"); }
+        if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
+        @tr("Saved")
+    }
+
+    // Validation problems from the core (route and settings changes).
+    public pure function problem(code: string, detail: string) -> string {
+        if (code == "path_length") { return @tr("The local path must be 1 to 64 characters long."); }
+        if (code == "path_chars") { return @tr("The local path may only contain letters, digits, '-' and '_'."); }
+        if (code == "path_taken") { return @tr("Another route already uses the local path \"{}\".", detail); }
+        if (code == "name_missing") { return @tr("Give the route a name."); }
+        if (code == "not_twitch") { return @tr("Only Twitch ingest servers on port 1935 are accepted."); }
+        if (code == "url_scheme") { return @tr("Only rtmp:// and rtmps:// server URLs are supported."); }
+        if (code == "url_no_host") { return @tr("The server URL has no host name."); }
+        if (code == "url_bad_host") { return @tr("The server URL has an invalid host name."); }
+        if (code == "url_bad_port") { return @tr("The server URL has an invalid port."); }
+        if (code == "route_streaming") { return @tr("This route is streaming. Stop the stream in your encoder first."); }
+        if (code == "default_route") { return @tr("The default Twitch route can be edited or disabled, but not deleted."); }
+        if (code == "not_found") { return @tr("This route no longer exists."); }
+        if (code == "hotkey_key") { return @tr("This key cannot be used for a global shortcut."); }
+        if (code == "hotkey_taken") { return @tr("This shortcut is already used by another application or action."); }
+        if (code == "hotkey_unsupported") { return @tr("Global hotkeys are not available in this session."); }
+        if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
+        if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }
+        detail
+    }
+
+    public pure function system-default() -> string {
+        @tr("System default")
+    }
+
+    public pure function twitch-auto() -> string {
+        @tr("Automatic (closest server)")
+    }
+
+    public pure function duration(s: int) -> string {
+        if (s >= 60 && mod(s, 60) == 0) { return @tr("{} min", s / 60); }
+        if (s >= 60) { return @tr("{} min {} s", floor(s / 60), mod(s, 60)); }
+        @tr("{} s", s)
+    }
+}

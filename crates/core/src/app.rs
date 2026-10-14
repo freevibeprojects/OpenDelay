@@ -6,7 +6,7 @@
 use crate::diag;
 use crate::engine::{DelayState, EngineStatus, MAX_DELAY, Refusal};
 use crate::relay::{DelayConfig, MIN_BUFFER, Relay, RelayOptions};
-use crate::routes::{self, DEFAULT_ROUTE_ID, Route, normalize_path};
+use crate::routes::{self, DEFAULT_ROUTE_ID, Problem, Route, normalize_path};
 use crate::session::{Phase, Session};
 use crate::settings::{self, ListenerMode, Settings};
 use serde::{Deserialize, Serialize};
@@ -81,6 +81,7 @@ pub struct DelayStatus {
     pub max_delay_ms: u64,
     pub progress: Option<f32>,
     pub degraded: Option<String>,
+    pub buffer_limit_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -223,6 +224,7 @@ fn delay_status(e: &EngineStatus, cfg: &DelayConfig) -> DelayStatus {
         max_delay_ms: e.max_delay_ms,
         progress: e.progress,
         degraded: e.degraded.clone(),
+        buffer_limit_ms: e.buffer_limit_ms,
     }
 }
 
@@ -311,12 +313,12 @@ impl App {
     }
 
     /// Edit settings atomically; persists and notifies on success.
-    pub fn update_settings(&self, f: impl FnOnce(&mut Settings) -> Result<(), String>) -> Result<(), String> {
+    pub fn update_settings(&self, f: impl FnOnce(&mut Settings) -> Result<(), Problem>) -> Result<(), Problem> {
         let mut guard = self.settings.lock().unwrap_or_else(|e| e.into_inner());
         let mut next = guard.clone();
         f(&mut next)?;
         if let Some(path) = &self.settings_path {
-            next.save(path).map_err(|e| format!("Could not save settings: {e}"))?;
+            next.save(path).map_err(|e| Problem::new("save_failed", format!("Could not save settings: {e}")))?;
         }
         self.relay.set_routes(effective_routes(&next));
         *guard = next;
@@ -413,6 +415,7 @@ impl App {
             max_delay_ms: 0,
             progress: None,
             degraded: None,
+            buffer_limit_ms: None,
         };
         Status {
             version: env!("CARGO_PKG_VERSION"),
@@ -463,22 +466,25 @@ impl App {
         self.relay.sessions().iter().any(|s| s.route.id == id)
     }
 
-    pub fn add_route(&self, mut route: Route) -> Result<Route, String> {
+    pub fn add_route(&self, mut route: Route) -> Result<Route, Problem> {
         route.path = normalize_path(&route.path);
         route.id = format!("r{}", diag::short_id());
         self.save_route(None, route)
     }
 
-    pub fn update_route(&self, id: &str, mut route: Route) -> Result<Route, String> {
+    pub fn update_route(&self, id: &str, mut route: Route) -> Result<Route, Problem> {
         if self.streaming_route(id) {
-            return Err("This route is streaming. Stop the stream in your encoder before changing it.".into());
+            return Err(Problem::new(
+                "route_streaming",
+                "This route is streaming. Stop the stream in your encoder before changing it.",
+            ));
         }
         route.id = id.to_owned();
         route.path = normalize_path(&route.path);
         self.save_route(Some(id), route)
     }
 
-    fn save_route(&self, existing: Option<&str>, route: Route) -> Result<Route, String> {
+    fn save_route(&self, existing: Option<&str>, route: Route) -> Result<Route, Problem> {
         let saved = route.clone();
         self.update_settings(|s| {
             let mut candidate = route.clone();
@@ -493,7 +499,11 @@ impl App {
             routes::validate(&candidate, &s.routes)?;
             match existing {
                 Some(id) => {
-                    let slot = s.routes.iter_mut().find(|r| r.id == id).ok_or("No such route.")?;
+                    let slot = s
+                        .routes
+                        .iter_mut()
+                        .find(|r| r.id == id)
+                        .ok_or_else(|| Problem::new("not_found", "No such route."))?;
                     *slot = candidate;
                 }
                 None => s.routes.push(candidate),
@@ -503,23 +513,29 @@ impl App {
         Ok(saved)
     }
 
-    pub fn delete_route(&self, id: &str) -> Result<(), String> {
+    pub fn delete_route(&self, id: &str) -> Result<(), Problem> {
         if id == DEFAULT_ROUTE_ID {
-            return Err("The default Twitch route can be edited or disabled, but not deleted.".into());
+            return Err(Problem::new(
+                "default_route",
+                "The default Twitch route can be edited or disabled, but not deleted.",
+            ));
         }
         if self.streaming_route(id) {
-            return Err("This route is streaming. Stop the stream in your encoder before deleting it.".into());
+            return Err(Problem::new(
+                "route_streaming",
+                "This route is streaming. Stop the stream in your encoder before deleting it.",
+            ));
         }
         self.update_settings(|s| {
             let before = s.routes.len();
             s.routes.retain(|r| r.id != id);
-            if s.routes.len() == before { Err("No such route.".into()) } else { Ok(()) }
+            if s.routes.len() == before { Err(Problem::new("not_found", "No such route.")) } else { Ok(()) }
         })
     }
 
     // ---- network and Twitch server ----
 
-    pub fn set_listener_mode(&self, mode: ListenerMode) -> Result<String, String> {
+    pub fn set_listener_mode(&self, mode: ListenerMode) -> Result<String, Problem> {
         self.update_settings(|s| {
             s.listener_mode = mode;
             Ok(())
@@ -531,7 +547,7 @@ impl App {
         })
     }
 
-    pub fn set_twitch_server(&self, url: &str) -> Result<(), String> {
+    pub fn set_twitch_server(&self, url: &str) -> Result<(), Problem> {
         routes::validate_twitch_server(url)?;
         self.update_settings(|s| {
             s.twitch_server = url.trim().to_owned();

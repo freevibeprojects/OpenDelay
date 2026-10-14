@@ -2,8 +2,36 @@
 //! Relay routes (SPEC §6): a local application path on the listener and an
 //! upstream server URL, plus destination presets and validation rules.
 
-use crate::url::UpstreamUrl;
+use crate::url::{UpstreamUrl, UrlError};
 use serde::{Deserialize, Serialize};
+use std::fmt;
+
+/// A user-facing validation error: stable `code` (UIs translate it) plus an
+/// English message; `detail` carries the offending value when useful.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    pub code: &'static str,
+    pub message: String,
+    pub detail: String,
+}
+
+impl Problem {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Problem { code, message: message.into(), detail: String::new() }
+    }
+}
+
+impl fmt::Display for Problem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<UrlError> for Problem {
+    fn from(e: UrlError) -> Self {
+        Problem::new(e.code(), e.to_string())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -79,38 +107,40 @@ pub fn normalize_path(app: &str) -> String {
 }
 
 /// Only Twitch-owned ingest hosts on port 1935 (plain RTMP).
-pub fn validate_twitch_server(url: &str) -> Result<UpstreamUrl, String> {
-    let u = UpstreamUrl::parse(url).map_err(|e| e.to_string())?;
+pub fn validate_twitch_server(url: &str) -> Result<UpstreamUrl, Problem> {
+    let u = UpstreamUrl::parse(url)?;
     let twitch_host =
         u.host == "live.twitch.tv" || u.host.ends_with(".twitch.tv") || u.host.ends_with(".contribute.live-video.net");
     if u.tls || u.port != 1935 || !twitch_host {
-        return Err(
-            "Only Twitch ingest servers (rtmp://…twitch.tv or …contribute.live-video.net, port 1935) are accepted."
-                .into(),
-        );
+        return Err(Problem::new(
+            "not_twitch",
+            "Only Twitch ingest servers (rtmp://…twitch.tv or …contribute.live-video.net, port 1935) are accepted.",
+        ));
     }
     Ok(u)
 }
 
 /// Check `route` against the rules and the other routes (excluding itself).
-pub fn validate(route: &Route, others: &[Route]) -> Result<(), String> {
+pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     let path = normalize_path(&route.path);
     if path.is_empty() || path.len() > 64 {
-        return Err("The local path must be 1–64 characters.".into());
+        return Err(Problem::new("path_length", "The local path must be 1–64 characters."));
     }
     if !path.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err("The local path may only contain letters, digits, '-' and '_'.".into());
+        return Err(Problem::new("path_chars", "The local path may only contain letters, digits, '-' and '_'."));
     }
     if others.iter().any(|r| r.id != route.id && normalize_path(&r.path) == path) {
-        return Err(format!("Another route already uses the local path \"{path}\"."));
+        let mut p = Problem::new("path_taken", format!("Another route already uses the local path \"{path}\"."));
+        p.detail = path;
+        return Err(p);
     }
     if route.name.trim().is_empty() {
-        return Err("The route needs a name.".into());
+        return Err(Problem::new("name_missing", "The route needs a name."));
     }
     if route.preset == "twitch" {
         validate_twitch_server(&route.upstream)?;
     } else if route.enabled || !route.upstream.trim().is_empty() {
-        UpstreamUrl::parse(&route.upstream).map_err(|e| e.to_string())?;
+        UpstreamUrl::parse(&route.upstream)?;
     }
     Ok(())
 }
@@ -127,7 +157,7 @@ mod tests {
     fn route_rules() {
         let routes = default_routes();
         assert!(validate(&routes[0], &routes).is_ok());
-        assert!(validate(&r("a", "TWITCH/", "rtmp://h/app"), &routes).unwrap_err().contains("already uses"));
+        assert_eq!(validate(&r("a", "TWITCH/", "rtmp://h/app"), &routes).unwrap_err().code, "path_taken");
         assert!(validate(&r("a", "bad path", "rtmp://h/app"), &routes).is_err());
         assert!(validate(&r("a", "", "rtmp://h/app"), &routes).is_err());
         assert!(validate(&r("a", "yt", "http://h/app"), &routes).is_err());

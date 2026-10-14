@@ -1,0 +1,389 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Dashboard: hero delay value, main controls, buffer, stats, health.
+
+import { Theme, Icons } from "../theme.slint";
+import { Button, ButtonKind, IconButton, Card, Pill, ProgressBar, RollingNumber, StatCard, Select, Choice, Toggle, CopyField, Body, SectionTitle } from "../widgets.slint";
+import { AppState, Strings } from "../state.slint";
+
+component DelayStepper {
+    in-out property <int> value: AppState.configured-delay-s;
+    property <int> backend: AppState.configured-delay-s;
+    property <bool> pending;
+    property <int> ticks;
+    property <bool> holding: minus.pressed || plus.pressed;
+    accessible-role: spinbox;
+    accessible-label: @tr("Delay");
+    accessible-value: root.value;
+    accessible-action-increment => { root.step(1); }
+    accessible-action-decrement => { root.step(-1); }
+
+    changed backend => {
+        if (!root.pending) {
+            root.value = root.backend;
+        }
+    }
+    changed holding => {
+        if (!root.holding) {
+            root.ticks = 0;
+            commit.restart();
+        }
+    }
+
+    function step(dir: int) {
+        root.value = clamp(root.value + dir * (root.ticks > 12 ? 5 : 1), 1, 600);
+        root.pending = true;
+        commit.restart();
+    }
+
+    repeat := Timer {
+        interval: root.ticks == 0 ? 450ms : root.ticks < 8 ? 140ms : 60ms;
+        running: root.holding;
+        triggered => {
+            root.ticks += 1;
+            root.step(minus.pressed ? -1 : 1);
+        }
+    }
+    commit := Timer {
+        interval: 700ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if (root.pending && !root.holding) {
+                root.pending = false;
+                AppState.set-delay(root.value);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+        minus := IconButton {
+            icon: Icons.minus;
+            label: @tr("Shorter delay");
+            size: 38px;
+            round: true;
+            clicked => { root.step(-1); }
+        }
+        Rectangle {
+            min-width: 108px;
+            border-radius: Theme.radius-md;
+            background: Theme.bg-base;
+            border-width: 1px;
+            border-color: root.pending ? Theme.accent-hover : Theme.border-default;
+            Text {
+                text: Strings.duration(root.value);
+                color: Theme.text-primary;
+                font-size: 16px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        plus := IconButton {
+            icon: Icons.plus;
+            label: @tr("Longer delay");
+            size: 38px;
+            round: true;
+            clicked => { root.step(1); }
+        }
+    }
+}
+
+export component DashboardPage {
+    property <bool> active: AppState.delay-active;
+    property <color> state-color: AppState.state == "live" ? Theme.success
+        : AppState.state == "delayed" ? Theme.accent-hover
+        : (AppState.state == "buffering" || AppState.state == "recovering") ? Theme.warning
+        : AppState.state == "draining" ? Theme.success
+        : Theme.text-secondary;
+
+    VerticalLayout {
+        spacing: 20px;
+
+        if AppState.emergency: Rectangle {
+            height: 60px;
+            border-radius: Theme.radius-lg;
+            background: Theme.error.with-alpha(0.12);
+            border-width: 1px;
+            border-color: Theme.error.with-alpha(0.5);
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 12px;
+                spacing: 12px;
+                VerticalLayout {
+                    alignment: center;
+                    Image { source: Icons.power; colorize: Theme.error; width: 20px; height: 20px; }
+                }
+                Text {
+                    text: @tr("Emergency stop is active: encoders cannot publish until you allow streaming again.");
+                    color: Theme.text-primary;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: @tr("Allow streaming");
+                        clicked => { AppState.clear-emergency(); }
+                    }
+                }
+            }
+        }
+
+        // Hero
+        Card {
+            min-height: 300px;
+            VerticalLayout {
+                padding: 28px;
+                spacing: 6px;
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Pill {
+                        text: Strings.state-label(AppState.state);
+                        color: root.state-color;
+                        pulse: AppState.state == "buffering" || AppState.state == "recovering" || AppState.state == "draining";
+                    }
+                }
+                Rectangle {
+                    height: 150px;
+                    // soft glow behind the delayed value
+                    glow := Rectangle {
+                        width: 340px;
+                        height: 150px;
+                        border-radius: 75px;
+                        background: @radial-gradient(circle, #7f63f066 0%, #7f63f000 70%);
+                        opacity: root.active ? 1 : 0;
+                        animate opacity { duration: Theme.normal; }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        RollingNumber {
+                            value: root.active ? AppState.current-delay-s : AppState.configured-delay-s;
+                            font-size: 116px;
+                            color: root.active ? Theme.hero-gradient : Theme.text-primary;
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            padding-bottom: 26px;
+                            Text {
+                                text: @tr("s");
+                                color: root.active ? Theme.accent-hover : Theme.text-secondary;
+                                font-size: 34px;
+                                font-weight: 600;
+                            }
+                        }
+                    }
+                }
+                Text {
+                    horizontal-alignment: center;
+                    color: Theme.text-secondary;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    text: AppState.state == "offline" ? @tr("Delay that will be used. Start streaming in your encoder to begin.")
+                        : AppState.state == "connecting" ? @tr("Connecting to the platform…")
+                        : AppState.state == "recovering" ? @tr("Reconnecting to the platform (attempt {})…", AppState.recovery-attempt)
+                        : AppState.state == "buffering" ? @tr("Building the delay up to {}: viewers see a pause until it is reached.", Strings.duration(AppState.target-delay-s))
+                        : AppState.state == "draining" ? @tr("Catching up with the live edge…")
+                        : AppState.state == "delayed" ? @tr("Viewers are {} behind (target {}).", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
+                        : AppState.ready ? @tr("Viewers see you live. The delay can start instantly.")
+                        : @tr("Viewers see you live. The buffer is still filling; enabling now builds the delay up.");
+                }
+                if AppState.progress >= 0: HorizontalLayout {
+                    alignment: center;
+                    padding-top: 10px;
+                    ProgressBar {
+                        width: 280px;
+                        value: AppState.progress;
+                        color: AppState.state == "buffering" ? Theme.warning : Theme.success;
+                    }
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 12px;
+                    padding-top: 18px;
+                    Button {
+                        text: root.active ? @tr("Disable delay") : @tr("Enable delay");
+                        kind: ButtonKind.primary;
+                        min-width: 180px;
+                        font-size: 15px;
+                        enabled: AppState.delay-mode && AppState.state != "draining";
+                        clicked => {
+                            if (root.active) {
+                                AppState.go-live();
+                            } else {
+                                AppState.enable-delay();
+                            }
+                        }
+                    }
+                    Button {
+                        text: @tr("Go live");
+                        show-icon: true;
+                        icon: Icons.live;
+                        enabled: root.active && AppState.state != "draining";
+                        clicked => { AppState.go-live(); }
+                    }
+                }
+            }
+        }
+
+        if AppState.state == "offline": Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("Waiting for your encoder"); }
+                Body { text: @tr("In OBS (or any RTMP encoder) set the server to this address and keep your usual stream key:"); }
+                CopyField {
+                    value: AppState.encoder-url;
+                    label: @tr("Server URL");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+            }
+        }
+
+        // Controls
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+                HorizontalLayout {
+                    spacing: 24px;
+                    VerticalLayout {
+                        spacing: 8px;
+                        Text { text: @tr("Delay"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        DelayStepper { }
+                    }
+                    VerticalLayout {
+                        spacing: 8px;
+                        Text { text: @tr("Buffer length"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        Select {
+                            label: @tr("Buffer length");
+                            current: Strings.duration(AppState.buffer-s);
+                            value: AppState.buffer-s;
+                            choices: [
+                                { value: "15", label: Strings.duration(15) },
+                                { value: "30", label: Strings.duration(30) },
+                                { value: "45", label: Strings.duration(45) },
+                                { value: "60", label: Strings.duration(60) },
+                                { value: "90", label: Strings.duration(90) },
+                                { value: "120", label: Strings.duration(120) },
+                                { value: "180", label: Strings.duration(180) },
+                                { value: "240", label: Strings.duration(240) },
+                                { value: "300", label: Strings.duration(300) },
+                                { value: "600", label: Strings.duration(600) },
+                            ];
+                            chosen(v) => { AppState.set-buffer(v.to-float()); }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 8px;
+                        Text { text: @tr("Delay mode"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        VerticalLayout {
+                            alignment: center;
+                            min-height: 38px;
+                            Toggle {
+                                label: @tr("Delay mode");
+                                checked: AppState.delay-mode;
+                                toggled(on) => { AppState.set-delay-mode(on); }
+                            }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    VerticalLayout {
+                        alignment: end;
+                        Button {
+                            text: @tr("Emergency stop");
+                            kind: ButtonKind.danger;
+                            show-icon: true;
+                            icon: Icons.power;
+                            clicked => { AppState.emergency-stop(); }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        Text { text: @tr("Buffer"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; horizontal-stretch: 1; }
+                        Text {
+                            text: AppState.buffer-text;
+                            color: AppState.ready ? Theme.text-primary : Theme.warning;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
+                    }
+                    ProgressBar {
+                        value: AppState.buffer-fill;
+                        color: AppState.ready ? Theme.accent : Theme.warning;
+                    }
+                    if AppState.buffer-limit-s >= 0: Text {
+                        text: @tr("At the current bitrate only about {} fit in memory; the buffer is limited to that.", Strings.duration(AppState.buffer-limit-s));
+                        color: Theme.warning;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 16px;
+            StatCard { icon: Icons.signal; label: @tr("Bitrate"); value: AppState.bitrate-text; }
+            StatCard { icon: Icons.clock; label: @tr("Uptime"); value: AppState.uptime-text; }
+            StatCard { icon: Icons.buffer; label: @tr("Buffer"); value: AppState.buffer-text; }
+            StatCard {
+                icon: Icons.hourglass;
+                label: @tr("Current delay");
+                value: Strings.duration(AppState.current-delay-s);
+            }
+        }
+
+        if AppState.findings.length > 0: Card {
+            border-color: Theme.warning.with-alpha(0.35);
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Image { source: Icons.warning; colorize: Theme.warning; width: 18px; height: 18px; }
+                    SectionTitle { text: @tr("Stream health"); }
+                }
+                for f in AppState.findings: HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: start;
+                        padding-top: 5px;
+                        Rectangle {
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: f.severity == "high" ? Theme.error : f.severity == "medium" ? Theme.warning : Theme.text-secondary;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text { text: f.title; color: Theme.text-primary; font-size: 13px; font-weight: 600; wrap: word-wrap; }
+                        Body { text: f.detail; font-size: 12px; }
+                    }
+                }
+            }
+        }
+
+        if AppState.streams.length > 1: Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("Live routes"); }
+                for s in AppState.streams: HorizontalLayout {
+                    spacing: 16px;
+                    Text { text: s.route; color: Theme.text-primary; font-size: 13px; font-weight: 600; min-width: 120px; }
+                    Text { text: Strings.state-label(s.phase); color: Theme.text-secondary; font-size: 13px; min-width: 90px; }
+                    Text { text: s.bitrate; color: Theme.text-secondary; font-size: 13px; min-width: 90px; }
+                    Text { text: s.delay; color: Theme.text-secondary; font-size: 13px; horizontal-stretch: 1; }
+                }
+            }
+        }
+    }
+}

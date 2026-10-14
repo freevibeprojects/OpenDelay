@@ -1,0 +1,773 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# French translation of the OpenDelay desktop UI.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Dashboard"
+msgstr "Tableau de bord"
+
+msgid "Multistream"
+msgstr "Multistream"
+
+msgid "Controllers"
+msgstr "Contrôleurs"
+
+msgid "Overlay"
+msgstr "Overlay"
+
+msgid "Setup"
+msgstr "Configuration"
+
+msgid "Help"
+msgstr "Aide"
+
+msgid "Settings"
+msgstr "Paramètres"
+
+msgid "Update"
+msgstr "Mise à jour"
+
+msgid "Show OpenDelay"
+msgstr "Afficher OpenDelay"
+
+msgid "Disable delay"
+msgstr "Désactiver le délai"
+
+msgid "Enable delay"
+msgstr "Activer le délai"
+
+msgid "Go live"
+msgstr "Repasser en direct"
+
+msgid "Emergency stop"
+msgstr "Arrêt d'urgence"
+
+msgid "Quit"
+msgstr "Quitter"
+
+msgid "Press a key combination…"
+msgstr "Appuyez sur une combinaison de touches…"
+
+msgid "Not set"
+msgstr "Non défini"
+
+msgid "Shortcut saved"
+msgstr "Raccourci enregistré"
+
+msgid "Change"
+msgstr "Modifier"
+
+msgid "Clear"
+msgstr "Effacer"
+
+msgid "Global hotkeys"
+msgstr "Raccourcis globaux"
+
+msgid "System-wide shortcuts work even while OBS or a game has focus. They are not set by default."
+msgstr "Les raccourcis système fonctionnent même quand OBS ou un jeu est au premier plan. Aucun n'est défini par défaut."
+
+msgid "Show or hide the overlay"
+msgstr "Afficher ou masquer l'overlay"
+
+msgid "Custom delay"
+msgstr "Délai personnalisé"
+
+msgid "Enables the delay with {}."
+msgstr "Active le délai avec {}."
+
+msgid "Custom delay length"
+msgstr "Durée du délai personnalisé"
+
+msgid "Stream Deck and other controllers"
+msgstr "Stream Deck et autres contrôleurs"
+
+msgid "Controllers such as an Elgato Stream Deck plugin, Touch Portal or Bitfocus Companion connect to this WebSocket address. Every delay action and live status updates are available."
+msgstr "Les contrôleurs comme un plugin Elgato Stream Deck, Touch Portal ou Bitfocus Companion se connectent à cette adresse WebSocket. Toutes les actions de délai et l'état en direct sont disponibles."
+
+msgid "Controller WebSocket"
+msgstr "WebSocket des contrôleurs"
+
+msgid "Copied to the clipboard"
+msgstr "Copié dans le presse-papiers"
+
+msgid "Scripts can also read the status over HTTP:"
+msgstr "Les scripts peuvent aussi lire l'état en HTTP :"
+
+msgid "Status URL"
+msgstr "URL d'état"
+
+msgid "Controller protocol documentation"
+msgstr "Documentation du protocole des contrôleurs"
+
+msgid "Delay"
+msgstr "Délai"
+
+msgid "Shorter delay"
+msgstr "Délai plus court"
+
+msgid "Longer delay"
+msgstr "Délai plus long"
+
+msgid "Emergency stop is active: encoders cannot publish until you allow streaming again."
+msgstr "L'arrêt d'urgence est actif : les encodeurs ne peuvent pas diffuser tant que vous n'autorisez pas à nouveau le streaming."
+
+msgid "Allow streaming"
+msgstr "Autoriser le streaming"
+
+msgid "s"
+msgstr "s"
+
+msgid "Delay that will be used. Start streaming in your encoder to begin."
+msgstr "Délai qui sera utilisé. Lancez le stream dans votre encodeur pour commencer."
+
+msgid "Connecting to the platform…"
+msgstr "Connexion à la plateforme…"
+
+msgid "Reconnecting to the platform (attempt {})…"
+msgstr "Reconnexion à la plateforme (tentative {})…"
+
+msgid "Building the delay up to {}: viewers see a pause until it is reached."
+msgstr "Constitution du délai jusqu'à {} : les spectateurs voient une pause jusqu'à ce qu'il soit atteint."
+
+msgid "Catching up with the live edge…"
+msgstr "Rattrapage du direct…"
+
+msgid "Viewers are {} behind (target {})."
+msgstr "Les spectateurs ont {} de retard (cible {})."
+
+msgid "Viewers see you live. The delay can start instantly."
+msgstr "Les spectateurs vous voient en direct. Le délai peut démarrer instantanément."
+
+msgid "Viewers see you live. The buffer is still filling; enabling now builds the delay up."
+msgstr "Les spectateurs vous voient en direct. Le tampon se remplit encore ; activer maintenant constitue le délai progressivement."
+
+msgid "Waiting for your encoder"
+msgstr "En attente de votre encodeur"
+
+msgid "In OBS (or any RTMP encoder) set the server to this address and keep your usual stream key:"
+msgstr "Dans OBS (ou tout encodeur RTMP), indiquez cette adresse comme serveur et gardez votre clé de stream habituelle :"
+
+msgid "Server URL"
+msgstr "URL du serveur"
+
+msgid "Buffer length"
+msgstr "Durée du tampon"
+
+msgid "Delay mode"
+msgstr "Mode délai"
+
+msgid "Buffer"
+msgstr "Tampon"
+
+msgid "At the current bitrate only about {} fit in memory; the buffer is limited to that."
+msgstr "Au débit actuel, seulement {} environ tiennent en mémoire ; le tampon est limité à cette durée."
+
+msgid "Bitrate"
+msgstr "Débit"
+
+msgid "Uptime"
+msgstr "Durée"
+
+msgid "Current delay"
+msgstr "Délai actuel"
+
+msgid "Stream health"
+msgstr "Santé du stream"
+
+msgid "Live routes"
+msgstr "Routes en direct"
+
+msgid "Documentation and community"
+msgstr "Documentation et communauté"
+
+msgid "User guide"
+msgstr "Guide d'utilisation"
+
+msgid "Controller protocol (Stream Deck, Companion, scripts)"
+msgstr "Protocole des contrôleurs (Stream Deck, Companion, scripts)"
+
+msgid "Report a problem or ask a question"
+msgstr "Signaler un problème ou poser une question"
+
+msgid "Source code"
+msgstr "Code source"
+
+msgid "Troubleshooting"
+msgstr "Dépannage"
+
+msgid "The encoder cannot connect"
+msgstr "L'encodeur n'arrive pas à se connecter"
+
+msgid "Check that the server URL in your encoder matches a route (for example rtmp://127.0.0.1:1935/twitch) and that the route is enabled."
+msgstr "Vérifiez que l'URL du serveur dans votre encodeur correspond à une route (par exemple rtmp://127.0.0.1:1935/twitch) et que la route est activée."
+
+msgid "Switching the delay takes long or pauses"
+msgstr "Le changement de délai est long ou fait une pause"
+
+msgid "The delay can only start on a keyframe. Set the keyframe interval in your encoder to 2 seconds and keep the buffer longer than the delay."
+msgstr "Le délai ne peut démarrer que sur une image clé. Réglez l'intervalle d'images clés de votre encodeur sur 2 secondes et gardez un tampon plus long que le délai."
+
+msgid "The platform rejects the stream"
+msgstr "La plateforme refuse le stream"
+
+msgid "OpenDelay forwards your stream key unchanged. Check the key in your encoder and the server URL of the route."
+msgstr "OpenDelay transmet votre clé de stream telle quelle. Vérifiez la clé dans votre encodeur et l'URL du serveur de la route."
+
+msgid "Hotkeys do nothing"
+msgstr "Les raccourcis ne font rien"
+
+msgid "On Linux, global hotkeys need an X11 session. Under Wayland, bind your desktop's shortcuts to the controller WebSocket or HTTP API instead."
+msgstr "Sous Linux, les raccourcis globaux nécessitent une session X11. Sous Wayland, associez plutôt les raccourcis de votre bureau au WebSocket des contrôleurs ou à l'API HTTP."
+
+msgid "About"
+msgstr "À propos"
+
+msgid "OpenDelay {} is free software under the GNU General Public License version 3. It collects no telemetry."
+msgstr "OpenDelay {} est un logiciel libre sous licence publique générale GNU version 3. Il ne collecte aucune télémétrie."
+
+msgid "Third-party components and their licences are listed in THIRD_PARTY_LICENSES.md. The Inter typeface is used under the SIL Open Font License."
+msgstr "Les composants tiers et leurs licences sont listés dans THIRD_PARTY_LICENSES.md. La police Inter est utilisée sous licence SIL Open Font License."
+
+msgid "Add a route"
+msgstr "Ajouter une route"
+
+msgid "Edit route"
+msgstr "Modifier la route"
+
+msgid "Platform"
+msgstr "Plateforme"
+
+msgid "Name"
+msgstr "Nom"
+
+msgid "Local path"
+msgstr "Chemin local"
+
+msgid "Your encoder publishes to rtmp://127.0.0.1:1935/{}. Path changes take effect the next time the encoder connects."
+msgstr "Votre encodeur diffuse vers rtmp://127.0.0.1:1935/{}. Un changement de chemin s'applique à la prochaine connexion de l'encodeur."
+
+msgid "Twitch server"
+msgstr "Serveur Twitch"
+
+msgid "Platform server URL"
+msgstr "URL du serveur de la plateforme"
+
+msgid "Only Twitch ingest servers are accepted. Your stream key stays in your encoder."
+msgstr "Seuls les serveurs d'ingestion Twitch sont acceptés. Votre clé de stream reste dans votre encodeur."
+
+msgid "Paste the server URL from your platform without the stream key; the key stays in your encoder."
+msgstr "Collez l'URL du serveur fournie par votre plateforme, sans la clé de stream ; la clé reste dans votre encodeur."
+
+msgid "Enabled"
+msgstr "Activée"
+
+msgid "Click again to delete"
+msgstr "Cliquez à nouveau pour supprimer"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Route deleted"
+msgstr "Route supprimée"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Route saved"
+msgstr "Route enregistrée"
+
+msgid "Streaming"
+msgstr "En diffusion"
+
+msgid "Disabled"
+msgstr "Désactivée"
+
+msgid "Encoder server URL"
+msgstr "URL du serveur pour l'encodeur"
+
+msgid "Sends to"
+msgstr "Envoie vers"
+
+msgid "No server set"
+msgstr "Aucun serveur défini"
+
+msgid "This route is streaming. Stop the stream in your encoder to edit, disable or delete it."
+msgstr "Cette route est en diffusion. Arrêtez le stream dans votre encodeur pour la modifier, la désactiver ou la supprimer."
+
+msgid "Each route has its own local path. Point one encoder output at each route to stream to several platforms at the same time."
+msgstr "Chaque route a son propre chemin local. Dirigez une sortie de l'encodeur vers chaque route pour diffuser sur plusieurs plateformes en même temps."
+
+msgid "Add route"
+msgstr "Ajouter une route"
+
+msgid "Streaming to several platforms"
+msgstr "Diffuser sur plusieurs plateformes"
+
+msgid "Most encoders have a single stream output. To go live on more than one platform:"
+msgstr "La plupart des encodeurs n'ont qu'une sortie de stream. Pour diffuser sur plusieurs plateformes :"
+
+msgid "• OBS: add a second output with a multiple-output plugin, or use Aitum Vertical for a vertical stream, and give each output its own route URL."
+msgstr "• OBS : ajoutez une deuxième sortie avec un plugin de sorties multiples, ou utilisez Aitum Vertical pour un stream vertical, et donnez à chaque sortie l'URL de sa route."
+
+msgid "• Streamlabs and others: use one route per platform and switch the route in the encoder, or a restreaming service via the Restream preset."
+msgstr "• Streamlabs et autres : utilisez une route par plateforme et changez de route dans l'encodeur, ou un service de restreaming via le préréglage Restream."
+
+msgid "The delay settings apply to every live route at once."
+msgstr "Les réglages du délai s'appliquent à toutes les routes en direct à la fois."
+
+msgid "Red"
+msgstr "Rouge"
+
+msgid "Orange"
+msgstr "Orange"
+
+msgid "Yellow"
+msgstr "Jaune"
+
+msgid "Lime"
+msgstr "Citron vert"
+
+msgid "Green"
+msgstr "Vert"
+
+msgid "Teal"
+msgstr "Sarcelle"
+
+msgid "Cyan"
+msgstr "Cyan"
+
+msgid "Blue"
+msgstr "Bleu"
+
+msgid "Indigo"
+msgstr "Indigo"
+
+msgid "Pink"
+msgstr "Rose"
+
+msgid "White"
+msgstr "Blanc"
+
+msgid "Violet"
+msgstr "Violet"
+
+msgid "DELAY ON"
+msgstr "DÉLAI ACTIF"
+
+msgid "LIVE"
+msgstr "DIRECT"
+
+msgid "On-stream overlay"
+msgstr "Overlay à l'écran"
+
+msgid "In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; the badge shows whether the delay is on."
+msgstr "Dans OBS, ajoutez une source Navigateur avec cette URL (largeur 600, hauteur 160). Le fond est transparent ; le badge indique si le délai est actif."
+
+msgid "Overlay URL"
+msgstr "URL de l'overlay"
+
+msgid "Show overlay"
+msgstr "Afficher l'overlay"
+
+msgid "Overlay visible on stream"
+msgstr "Overlay visible sur le stream"
+
+msgid "Overlay hidden"
+msgstr "Overlay masqué"
+
+msgid "Preview"
+msgstr "Aperçu"
+
+msgid "Your stream"
+msgstr "Votre stream"
+
+msgid "Badge colour"
+msgstr "Couleur du badge"
+
+msgid "OBS dock"
+msgstr "Dock OBS"
+
+msgid "A compact control panel for OBS. In OBS choose Docks → Custom Browser Docks, enter a name such as OpenDelay and this URL."
+msgstr "Un panneau de contrôle compact pour OBS. Dans OBS, choisissez Docks → Docks de navigateur personnalisés, saisissez un nom comme OpenDelay et cette URL."
+
+msgid "Dock URL"
+msgstr "URL du dock"
+
+msgid "General"
+msgstr "Général"
+
+msgid "Start with the system"
+msgstr "Lancer au démarrage du système"
+
+msgid "Open OpenDelay in the tray when you log in."
+msgstr "Ouvre OpenDelay dans la zone de notification à l'ouverture de session."
+
+msgid "When the window is closed"
+msgstr "À la fermeture de la fenêtre"
+
+msgid "Keep relaying from the tray, or quit OpenDelay."
+msgstr "Continuer le relais depuis la zone de notification, ou quitter OpenDelay."
+
+msgid "Keep in tray"
+msgstr "Garder en arrière-plan"
+
+msgid "Language"
+msgstr "Langue"
+
+msgid "Reduce motion"
+msgstr "Réduire les animations"
+
+msgid "Turn off animations such as the rolling digits."
+msgstr "Désactive les animations comme les chiffres déroulants."
+
+msgid "Animated background"
+msgstr "Fond animé"
+
+msgid "Setup assistant"
+msgstr "Assistant de configuration"
+
+msgid "Walk through the first-run setup again."
+msgstr "Refaire la configuration du premier lancement."
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Automatic picks the closest Twitch ingest."
+msgstr "Le mode automatique choisit le serveur Twitch le plus proche."
+
+msgid "Refresh the Twitch server list"
+msgstr "Actualiser la liste des serveurs Twitch"
+
+msgid "Accept encoders from"
+msgstr "Accepter les encodeurs depuis"
+
+msgid "This computer and the local network ({}). Port 1935."
+msgstr "Cet ordinateur et le réseau local ({}). Port 1935."
+
+msgid "no network address found"
+msgstr "aucune adresse réseau trouvée"
+
+msgid "This computer only (127.0.0.1). Port 1935."
+msgstr "Cet ordinateur uniquement (127.0.0.1). Port 1935."
+
+msgid "This computer"
+msgstr "Cet ordinateur"
+
+msgid "Local network"
+msgstr "Réseau local"
+
+msgid "Restart OpenDelay for the listener change to take effect."
+msgstr "Redémarrez OpenDelay pour appliquer le changement d'écoute."
+
+msgid "Updates"
+msgstr "Mises à jour"
+
+msgid "Check for updates"
+msgstr "Rechercher des mises à jour"
+
+msgid "Ask the project's release feed for new versions. Nothing is downloaded without asking you."
+msgstr "Interroge le flux de versions du projet. Rien n'est téléchargé sans votre accord."
+
+msgid "Check now"
+msgstr "Vérifier maintenant"
+
+msgid "Download and verify"
+msgstr "Télécharger et vérifier"
+
+msgid "Diagnostics"
+msgstr "Diagnostic"
+
+msgid "Refresh"
+msgstr "Actualiser"
+
+msgid "One log file per stream session. Stream keys are never written to logs."
+msgstr "Un fichier journal par session de stream. Les clés de stream ne sont jamais écrites dans les journaux."
+
+msgid "No session logs yet."
+msgstr "Aucun journal de session pour l'instant."
+
+msgid "Open logs folder"
+msgstr "Ouvrir le dossier des journaux"
+
+msgid "Service"
+msgstr "Service"
+
+msgid "Stream Type"
+msgstr "Type de stream"
+
+msgid "Destination"
+msgstr "Destination"
+
+msgid "Custom…"
+msgstr "Personnalisé…"
+
+msgid "Custom Ingest"
+msgstr "Ingestion personnalisée"
+
+msgid "Custom RTMP server"
+msgstr "Serveur RTMP personnalisé"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "Server"
+msgstr "Serveur"
+
+msgid "Encoder stream settings: {} {}, {} {}, Stream key: your {} key"
+msgstr "Réglages de stream de l'encodeur : {} {}, {} {}, Clé de stream : votre clé {}"
+
+msgid "Settings → Stream"
+msgstr "Paramètres → Stream"
+
+msgid "Stream Key"
+msgstr "Clé de stream"
+
+msgid "•••••••• (your {} key)"
+msgstr "•••••••• (votre clé {})"
+
+msgid "Welcome to OpenDelay"
+msgstr "Bienvenue dans OpenDelay"
+
+msgid "Skip"
+msgstr "Passer"
+
+msgid "Encoder"
+msgstr "Encodeur"
+
+msgid "Done"
+msgstr "Terminé"
+
+msgid "Where do you stream?"
+msgstr "Où diffusez-vous ?"
+
+msgid "OpenDelay sits between your encoder and the platform. Pick the platform to set up first; you can add more later on the Multistream page."
+msgstr "OpenDelay se place entre votre encodeur et la plateforme. Choisissez la plateforme à configurer en premier ; vous pourrez en ajouter d'autres sur la page Multistream."
+
+msgid "Server URL from your platform"
+msgstr "URL du serveur fournie par votre plateforme"
+
+msgid "Point your encoder at OpenDelay"
+msgstr "Dirigez votre encodeur vers OpenDelay"
+
+msgid "Other encoder"
+msgstr "Autre encodeur"
+
+msgid "In OBS open Settings → Stream, choose the service \"Custom…\", paste the server below and keep your usual {} stream key."
+msgstr "Dans OBS, ouvrez Paramètres → Stream, choisissez le service « Personnalisé… », collez le serveur ci-dessous et gardez votre clé de stream {} habituelle."
+
+msgid "In Streamlabs open Settings → Stream, choose \"Custom Ingest\", paste the URL below and your {} stream key."
+msgstr "Dans Streamlabs, ouvrez Paramètres → Stream, choisissez « Custom Ingest », collez l'URL ci-dessous et votre clé de stream {}."
+
+msgid "Choose a custom RTMP server in your encoder, paste the URL below and use your {} stream key."
+msgstr "Choisissez un serveur RTMP personnalisé dans votre encodeur, collez l'URL ci-dessous et utilisez votre clé de stream {}."
+
+msgid "Show the delay on stream (optional)"
+msgstr "Afficher le délai sur le stream (facultatif)"
+
+msgid "Add a Browser source in your encoder with the overlay URL. Viewers then see when the delay is on. You can change its colour on the Overlay page."
+msgstr "Ajoutez une source Navigateur dans votre encodeur avec l'URL de l'overlay. Les spectateurs voient alors quand le délai est actif. Vous pouvez changer sa couleur sur la page Overlay."
+
+msgid "You are ready"
+msgstr "Tout est prêt"
+
+msgid "Start streaming in your encoder. The Dashboard shows the connection, and \"Enable delay\" switches the delay on without stopping the stream."
+msgstr "Lancez le stream dans votre encodeur. Le tableau de bord affiche la connexion, et « Activer le délai » active le délai sans arrêter le stream."
+
+msgid "Tip: set global hotkeys on the Controllers page so you can switch the delay from inside a game."
+msgstr "Astuce : définissez des raccourcis globaux sur la page Contrôleurs pour changer le délai depuis un jeu."
+
+msgid "Back"
+msgstr "Retour"
+
+msgid "Finish"
+msgstr "Terminer"
+
+msgid "Next"
+msgstr "Suivant"
+
+msgid "Paste the server URL your platform gives you."
+msgstr "Collez l'URL du serveur fournie par votre plateforme."
+
+msgid "The assistant walks you through choosing a platform, pointing your encoder at OpenDelay and adding the overlay."
+msgstr "L'assistant vous guide pour choisir une plateforme, diriger votre encodeur vers OpenDelay et ajouter l'overlay."
+
+msgid "Open the setup assistant"
+msgstr "Ouvrir l'assistant de configuration"
+
+msgid "Encoder settings"
+msgstr "Réglages de l'encodeur"
+
+msgid "Use a custom RTMP server in your encoder with one of these URLs and keep the stream key from your platform. OpenDelay forwards the key unchanged."
+msgstr "Utilisez un serveur RTMP personnalisé dans votre encodeur avec l'une de ces URL et gardez la clé de stream de votre plateforme. OpenDelay transmet la clé telle quelle."
+
+msgid "From another computer on your network, replace 127.0.0.1 with {}."
+msgstr "Depuis un autre ordinateur du réseau, remplacez 127.0.0.1 par {}."
+
+msgid "Live"
+msgstr "En direct"
+
+msgid "Delayed"
+msgstr "Différé"
+
+msgid "Buffering"
+msgstr "Mise en tampon"
+
+msgid "Going live"
+msgstr "Retour au direct"
+
+msgid "Recovering"
+msgstr "Reconnexion"
+
+msgid "Connecting"
+msgstr "Connexion"
+
+msgid "Offline"
+msgstr "Hors ligne"
+
+msgid "Custom"
+msgstr "Personnalisé"
+
+msgid "No stream is connected yet. Start streaming in your encoder first."
+msgstr "Aucun stream n'est encore connecté. Lancez d'abord le stream dans votre encodeur."
+
+msgid "The delay buffer is not ready yet. Try again in a moment."
+msgstr "Le tampon du délai n'est pas encore prêt. Réessayez dans un instant."
+
+msgid "The delay is already on."
+msgstr "Le délai est déjà actif."
+
+msgid "You are already live."
+msgstr "Vous êtes déjà en direct."
+
+msgid "Delay mode is turned off."
+msgstr "Le mode délai est désactivé."
+
+msgid "That is not possible right now: {}"
+msgstr "Impossible pour le moment : {}"
+
+msgid "Please wait for the current transition to finish."
+msgstr "Attendez la fin de la transition en cours."
+
+msgid "The connection to the platform is recovering. Try again shortly."
+msgstr "La connexion à la plateforme est en cours de rétablissement. Réessayez bientôt."
+
+msgid "This delay does not fit in memory at the current bitrate."
+msgstr "Ce délai ne tient pas en mémoire au débit actuel."
+
+msgid "The stream connection failed while applying the action."
+msgstr "La connexion du stream a échoué pendant l'action."
+
+msgid "That value is out of range."
+msgstr "Cette valeur est hors limites."
+
+msgid "Delay on"
+msgstr "Délai activé"
+
+msgid "The delay is building up"
+msgstr "Le délai se constitue"
+
+msgid "Delay updated"
+msgstr "Délai mis à jour"
+
+msgid "Buffer length updated"
+msgstr "Durée du tampon mise à jour"
+
+msgid "Delay mode on"
+msgstr "Mode délai activé"
+
+msgid "Delay mode off"
+msgstr "Mode délai désactivé"
+
+msgid "Overlay shown"
+msgstr "Overlay affiché"
+
+msgid "Emergency stop: every stream was disconnected"
+msgstr "Arrêt d'urgence : tous les streams ont été déconnectés"
+
+msgid "Streaming allowed again"
+msgstr "Streaming à nouveau autorisé"
+
+msgid "Saved. Restart OpenDelay for the listener change to take effect."
+msgstr "Enregistré. Redémarrez OpenDelay pour appliquer le changement d'écoute."
+
+msgid "Saved"
+msgstr "Enregistré"
+
+msgid "The local path must be 1 to 64 characters long."
+msgstr "Le chemin local doit comporter de 1 à 64 caractères."
+
+msgid "The local path may only contain letters, digits, '-' and '_'."
+msgstr "Le chemin local ne peut contenir que des lettres, des chiffres, « - » et « _ »."
+
+msgid "Another route already uses the local path \"{}\"."
+msgstr "Une autre route utilise déjà le chemin local « {} »."
+
+msgid "Give the route a name."
+msgstr "Donnez un nom à la route."
+
+msgid "Only Twitch ingest servers on port 1935 are accepted."
+msgstr "Seuls les serveurs d'ingestion Twitch sur le port 1935 sont acceptés."
+
+msgid "Only rtmp:// and rtmps:// server URLs are supported."
+msgstr "Seules les URL de serveur rtmp:// et rtmps:// sont prises en charge."
+
+msgid "The server URL has no host name."
+msgstr "L'URL du serveur n'a pas de nom d'hôte."
+
+msgid "The server URL has an invalid host name."
+msgstr "L'URL du serveur a un nom d'hôte invalide."
+
+msgid "The server URL has an invalid port."
+msgstr "L'URL du serveur a un port invalide."
+
+msgid "This route is streaming. Stop the stream in your encoder first."
+msgstr "Cette route est en diffusion. Arrêtez d'abord le stream dans votre encodeur."
+
+msgid "The default Twitch route can be edited or disabled, but not deleted."
+msgstr "La route Twitch par défaut peut être modifiée ou désactivée, mais pas supprimée."
+
+msgid "This route no longer exists."
+msgstr "Cette route n'existe plus."
+
+msgid "This key cannot be used for a global shortcut."
+msgstr "Cette touche ne peut pas servir de raccourci global."
+
+msgid "This shortcut is already used by another application or action."
+msgstr "Ce raccourci est déjà utilisé par une autre application ou action."
+
+msgid "Global hotkeys are not available in this session."
+msgstr "Les raccourcis globaux ne sont pas disponibles dans cette session."
+
+msgid "OpenDelay could not listen for encoders on port 1935: {}"
+msgstr "OpenDelay n'a pas pu écouter les encodeurs sur le port 1935 : {}"
+
+msgid "The local web server could not start on port 3000: {}"
+msgstr "Le serveur web local n'a pas pu démarrer sur le port 3000 : {}"
+
+msgid "System default"
+msgstr "Langue du système"
+
+msgid "Automatic (closest server)"
+msgstr "Automatique (serveur le plus proche)"
+
+msgid "{} min"
+msgstr "{} min"
+
+msgid "{} min {} s"
+msgstr "{} min {} s"
+
+msgid "{} s"
+msgstr "{} s"
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Close"
+msgstr "Fermer"

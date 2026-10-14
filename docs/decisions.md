@@ -136,3 +136,33 @@ Each entry: the decision, then why.
   is renamed to `settings.json.bad` and defaults are used. Saves are atomic.
 - The update check is **off by default** (opt-in), in keeping with the
   no-telemetry rule.
+
+## Desktop UI
+
+- **Contrast.** White on the accent fill measures 4.25:1 and white on the
+  error fill 3.8:1, below the 4.5:1 target, so primary and danger buttons use
+  `bg-base` (#060608) as label colour (4.8:1 and 5.3:1). `text-muted` and
+  `accent` text are 4.4:1 on `bg-surface`, so cards use `text-secondary` for
+  small text and `accent-hover` for accent-coloured text; muted text appears
+  only on the base and sidebar backgrounds.
+- **Tabular digits**: Slint cannot enable OpenType features, so the hero
+  number draws each digit in a fixed-width column (which the odometer needs
+  anyway). Other numbers use Inter's default figures.
+- **Modal backdrop**: Slint has no backdrop blur; modals dim the window
+  (70 % black) instead.
+- **Encoder "screenshots"** in the setup assistant are drawn schematics of
+  the stream-settings form (service, server, key) rather than screenshots of
+  third-party software, which keeps them original and translatable.
+- **Translations**: desktop strings use Slint `@tr()` with bundled gettext
+  catalogues in `crates/app/lang/<code>/LC_MESSAGES/opendelay.po`; the
+  language list is generated at build time from that folder (the native name
+  comes from the `X-Language-Name` header). Adding a language = adding a
+  `.po` file. `scripts/extract_strings.py <po>` lists missing strings. Errors
+  and refusals from the core carry stable codes that the UI translates; only
+  low-level network error details stay in English.
+- **Diagnostics in the desktop app** open the log file or the logs folder with
+  the system handler; download is offered by the HTTP API.
+- **Help links** point at the repository URL from `Cargo.toml`, still a
+  placeholder (`example.invalid`) until the project is published.
+- `cargo run -p opendelay --example screenshot --features screenshot -- DIR`
+  renders every page offscreen (software renderer) for visual review.

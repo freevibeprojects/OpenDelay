@@ -22,6 +22,9 @@ allow = [
     "MPL-2.0",
     "Unicode-3.0",
     "OFL-1.1",
+    # Not in the project's original list but GPL-3.0-compatible per the FSF:
+    # Boost (Slint's Windows clipboard: clipboard-win, error-code).
+    "BSL-1.0",
 ]
 confidence-threshold = 0.93
 unused-allowed-license = "allow"
@@ -37,3 +40,10 @@ wildcards = "allow"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+
+[advisories]
+ignore = [
+    # ttf-parser is unmaintained; it is pulled in by Slint's font stack and has
+    # no maintained drop-in replacement there yet. Not a vulnerability.
+    "RUSTSEC-2026-0192",
+]

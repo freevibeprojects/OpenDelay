@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Overlay: OBS browser source URL, badge colour, live preview, OBS dock URL.
+
+import { Theme, Icons } from "../theme.slint";
+import { Button, ButtonKind, Card, CopyField, Toggle, Body, SectionTitle } from "../widgets.slint";
+import { AppState, Strings } from "../state.slint";
+
+export global Palette {
+    out property <[string]> names: ["red", "orange", "yellow", "lime", "green", "teal", "cyan", "blue", "indigo", "violet", "pink", "white"];
+
+    public pure function color-of(name: string) -> color {
+        if (name == "red") { return #ef4444; }
+        if (name == "orange") { return #f97316; }
+        if (name == "yellow") { return #facc15; }
+        if (name == "lime") { return #84cc16; }
+        if (name == "green") { return #22c55e; }
+        if (name == "teal") { return #14b8a6; }
+        if (name == "cyan") { return #22d3ee; }
+        if (name == "blue") { return #3b82f6; }
+        if (name == "indigo") { return #6366f1; }
+        if (name == "pink") { return #ec4899; }
+        if (name == "white") { return #f4f4f6; }
+        #a48ffb
+    }
+
+    public pure function label-of(name: string) -> string {
+        if (name == "red") { return @tr("Red"); }
+        if (name == "orange") { return @tr("Orange"); }
+        if (name == "yellow") { return @tr("Yellow"); }
+        if (name == "lime") { return @tr("Lime"); }
+        if (name == "green") { return @tr("Green"); }
+        if (name == "teal") { return @tr("Teal"); }
+        if (name == "cyan") { return @tr("Cyan"); }
+        if (name == "blue") { return @tr("Blue"); }
+        if (name == "indigo") { return @tr("Indigo"); }
+        if (name == "pink") { return @tr("Pink"); }
+        if (name == "white") { return @tr("White"); }
+        @tr("Violet")
+    }
+}
+
+// The on-stream badge, as the overlay page draws it.
+export component OverlayBadge {
+    in property <color> tone: Palette.color-of(AppState.overlay-color);
+    in property <bool> active: AppState.delay-active;
+    in property <int> seconds: AppState.current-delay-s;
+    in property <float> progress: AppState.progress;
+    height: 52px;
+    width: row.preferred-width;
+    Rectangle {
+        border-radius: self.height / 2;
+        background: #0a0a0dd9;
+        border-width: 1.5px;
+        border-color: root.tone.with-alpha(0.6);
+        drop-shadow-blur: 20px;
+        drop-shadow-color: root.tone.with-alpha(0.3);
+        clip: true;
+        row := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 20px;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: root.tone.with-alpha(0.2);
+                    Image {
+                        source: root.active ? Icons.hourglass : Icons.live;
+                        colorize: root.tone;
+                        width: 20px;
+                        height: 20px;
+                    }
+                }
+            }
+            Text {
+                text: root.active ? @tr("DELAY ON") : @tr("LIVE");
+                color: #f4f4f6;
+                font-size: 15px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            if root.active: Text {
+                text: Strings.duration(root.seconds);
+                color: root.tone;
+                font-size: 15px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+        }
+        if root.progress >= 0: Rectangle {
+            y: parent.height - 3px;
+            height: 3px;
+            x: 0;
+            width: parent.width * root.progress;
+            background: root.tone;
+            animate width { duration: Theme.normal; }
+        }
+    }
+}
+
+export component OverlayPage {
+    VerticalLayout {
+        spacing: 16px;
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("On-stream overlay"); }
+                Body { text: @tr("In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; the badge shows whether the delay is on."); }
+                CopyField {
+                    value: AppState.overlay-url;
+                    label: @tr("Overlay URL");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    padding-top: 6px;
+                    Toggle {
+                        label: @tr("Show overlay");
+                        checked: AppState.overlay-visible;
+                        toggled => { AppState.toggle-overlay(); }
+                    }
+                    Text {
+                        text: AppState.overlay-visible ? @tr("Overlay visible on stream") : @tr("Overlay hidden");
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                SectionTitle { text: @tr("Preview"); }
+                Rectangle {
+                    height: 150px;
+                    border-radius: Theme.radius-md;
+                    background: @linear-gradient(135deg, #1f2937 0%, #312e81 50%, #0f172a 100%);
+                    clip: true;
+                    Text {
+                        x: 16px;
+                        y: parent.height - 30px;
+                        text: @tr("Your stream");
+                        color: #ffffff80;
+                        font-size: 12px;
+                    }
+                    OverlayBadge {
+                        x: 20px;
+                        y: 20px;
+                        opacity: AppState.overlay-visible ? 1 : 0.35;
+                    }
+                }
+                Text { text: @tr("Badge colour"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for name in Palette.names: Rectangle {
+                        width: 30px;
+                        height: 30px;
+                        border-radius: 15px;
+                        background: Palette.color-of(name);
+                        border-width: AppState.overlay-color == name ? 3px : sfs.has-focus ? 2px : 0px;
+                        border-color: AppState.overlay-color == name ? Theme.text-primary : Theme.accent-hover;
+                        accessible-role: radio-button;
+                        accessible-label: Palette.label-of(name);
+                        accessible-checked: AppState.overlay-color == name;
+                        accessible-action-default => { AppState.set-overlay-color(name); }
+                        sfs := FocusScope {
+                            key-pressed(e) => {
+                                if (e.text == " " || e.text == Key.Return) {
+                                    AppState.set-overlay-color(name);
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { AppState.set-overlay-color(name); }
+                        }
+                    }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("OBS dock"); }
+                Body { text: @tr("A compact control panel for OBS. In OBS choose Docks → Custom Browser Docks, enter a name such as OpenDelay and this URL."); }
+                CopyField {
+                    value: AppState.dock-url;
+                    label: @tr("Dock URL");
+                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+            }
+        }
+    }
+}

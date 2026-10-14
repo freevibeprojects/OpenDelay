@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- SPDX-License-Identifier: GPL-3.0-only -->
+  <!-- OpenDelay mark: an open ring (the stream held back) around a play symbol. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a48ffb"/>
+      <stop offset="1" stop-color="#5a3fc2"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="url(#bg)"/>
+  <path d="M128 52 A76 76 0 1 0 193.8 90" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="166" cy="62.2" r="12" fill="#ffffff"/>
+  <path d="M114 100 L160 128 L114 156 Z" fill="#ffffff" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
+</svg>

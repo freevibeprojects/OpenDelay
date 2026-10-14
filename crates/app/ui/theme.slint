@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Design tokens from DESIGN.md.
+
+import "../../../assets/fonts/Inter-Regular.ttf";
+import "../../../assets/fonts/Inter-Medium.ttf";
+import "../../../assets/fonts/Inter-SemiBold.ttf";
+import "../../../assets/fonts/Inter-Bold.ttf";
+
+export global Theme {
+    out property <color> bg-base: #060608;
+    out property <color> bg-elevated: #0a0a0d;
+    out property <color> bg-surface: #121217;
+    out property <color> bg-surface-hover: #1a1a21;
+    // white @ 6 / 10 / 17 %
+    out property <color> border-subtle: #ffffff0f;
+    out property <color> border-default: #ffffff1a;
+    out property <color> border-hover: #ffffff2b;
+    out property <color> text-primary: #f4f4f6;
+    out property <color> text-secondary: #b3b3be;
+    // muted text only on bg-base / bg-elevated (contrast ≥ 4.5:1)
+    out property <color> text-muted: #7a7a88;
+    out property <color> text-disabled: #55555f;
+    out property <color> accent: #7f63f0;
+    out property <color> accent-hover: #a48ffb;
+    // accent @ 12 % / 28 %
+    out property <color> accent-muted: #7f63f01f;
+    out property <color> accent-glow: #7f63f047;
+    out property <color> success: #12b886;
+    out property <color> warning: #f2a20c;
+    out property <color> error: #ec4646;
+    // label colour on accent / error / success fills (white would be < 4.5:1)
+    out property <color> on-fill: #060608;
+    out property <brush> hero-gradient: @linear-gradient(180deg, #ece6ff 0%, #a690fb 55%, #4a3394 100%);
+
+    out property <length> radius-xs: 4px;
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 10px;
+    out property <length> radius-lg: 14px;
+    out property <length> radius-xl: 20px;
+
+    in-out property <bool> reduce-motion: false;
+    out property <duration> fast: reduce-motion ? 0ms : 140ms;
+    out property <duration> normal: reduce-motion ? 0ms : 240ms;
+    out property <duration> roll: reduce-motion ? 0ms : 600ms;
+}
+
+export global Icons {
+    out property <image> dashboard: @image-url("../../../assets/icons/dashboard.svg");
+    out property <image> multistream: @image-url("../../../assets/icons/multistream.svg");
+    out property <image> controllers: @image-url("../../../assets/icons/controllers.svg");
+    out property <image> overlay: @image-url("../../../assets/icons/overlay.svg");
+    out property <image> setup: @image-url("../../../assets/icons/setup.svg");
+    out property <image> help: @image-url("../../../assets/icons/help.svg");
+    out property <image> settings: @image-url("../../../assets/icons/settings.svg");
+    out property <image> copy: @image-url("../../../assets/icons/copy.svg");
+    out property <image> plus: @image-url("../../../assets/icons/plus.svg");
+    out property <image> minus: @image-url("../../../assets/icons/minus.svg");
+    out property <image> edit: @image-url("../../../assets/icons/edit.svg");
+    out property <image> trash: @image-url("../../../assets/icons/trash.svg");
+    out property <image> external: @image-url("../../../assets/icons/external.svg");
+    out property <image> check: @image-url("../../../assets/icons/check.svg");
+    out property <image> warning: @image-url("../../../assets/icons/warning.svg");
+    out property <image> close: @image-url("../../../assets/icons/close.svg");
+    out property <image> power: @image-url("../../../assets/icons/power.svg");
+    out property <image> refresh: @image-url("../../../assets/icons/refresh.svg");
+    out property <image> signal: @image-url("../../../assets/icons/signal.svg");
+    out property <image> clock: @image-url("../../../assets/icons/clock.svg");
+    out property <image> buffer: @image-url("../../../assets/icons/buffer.svg");
+    out property <image> hourglass: @image-url("../../../assets/icons/hourglass.svg");
+    out property <image> folder: @image-url("../../../assets/icons/folder.svg");
+    out property <image> document: @image-url("../../../assets/icons/document.svg");
+    out property <image> chevron-right: @image-url("../../../assets/icons/chevron-right.svg");
+    out property <image> chevron-left: @image-url("../../../assets/icons/chevron-left.svg");
+    out property <image> chevron-down: @image-url("../../../assets/icons/chevron-down.svg");
+    out property <image> eye: @image-url("../../../assets/icons/eye.svg");
+    out property <image> eye-off: @image-url("../../../assets/icons/eye-off.svg");
+    out property <image> live: @image-url("../../../assets/icons/live.svg");
+    out property <image> logo: @image-url("../../../assets/logo.svg");
+}

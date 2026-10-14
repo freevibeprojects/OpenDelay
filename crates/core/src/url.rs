@@ -34,6 +34,17 @@ impl fmt::Display for UrlError {
 }
 impl std::error::Error for UrlError {}
 
+impl UrlError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            UrlError::Scheme => "url_scheme",
+            UrlError::NoHost => "url_no_host",
+            UrlError::BadHost => "url_bad_host",
+            UrlError::BadPort => "url_bad_port",
+        }
+    }
+}
+
 impl UpstreamUrl {
     pub fn parse(input: &str) -> Result<Self, UrlError> {
         let s = input.trim();

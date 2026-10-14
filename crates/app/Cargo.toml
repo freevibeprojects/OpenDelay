@@ -9,3 +9,17 @@ publish = false
 
 [dependencies]
 opendelay-core = { path = "../core" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+sys-locale = "0.3"
+slint = { version = "1.18", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "accessibility", "compat-1-2"] }
+
+[build-dependencies]
+slint-build = "1.18"
+
+[features]
+# Developer tool: render the UI offscreen (see examples/screenshot.rs).
+screenshot = ["slint/renderer-software", "slint/software-renderer-systemfonts"]
+
+[[example]]
+name = "screenshot"
+required-features = ["screenshot"]

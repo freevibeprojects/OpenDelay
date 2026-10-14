@@ -4,7 +4,9 @@
 import json, subprocess, sys
 
 TARGETS = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
-EXTRA = []  # bundled non-crate assets: (name, version, licence, source)
+EXTRA = [  # bundled non-crate assets: (name, version, licence, source)
+    ("Inter typeface (assets/fonts)", "4.1", "OFL-1.1", "https://github.com/rsms/inter"),
+]
 
 crates = {}
 for target in TARGETS:
