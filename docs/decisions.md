@@ -31,3 +31,32 @@ Each entry: the decision, then why.
   any single-track message). Enhanced RTMP ModEx blocks are skipped.
 - **At most 64 chunk streams** per connection are tracked (memory bound for
   untrusted LAN peers).
+
+## Relay
+
+- **Publish negotiation.** On the encoder's `connect` the relay connects to the
+  upstream with the encoder's own command object (only `app` and `tcUrl`
+  rewritten, so Enhanced RTMP capability fields pass through) and relays the
+  platform's `_result`/`_error`. `releaseStream`, `FCPublish` and
+  `createStream` are answered locally (stream id 1). On `publish` the relay
+  runs `releaseStream`/`FCPublish`/`createStream`/`publish` upstream with the
+  same key and relays the platform's `onStatus` (including rejections such as
+  `NetStream.Publish.BadName`) to the encoder.
+- **Upstream recovery**: up to 8 attempts with exponential back-off from 0.5 s
+  (capped at 15 s, about one minute in total). After that the encoder is
+  disconnected so its own reconnect logic takes over. Status shows the attempt
+  number and last error. A server `onStatus` with level `error` or
+  `NetConnection.Connect.ReconnectRequest` also triggers recovery.
+- **After a reconnect** output resumes at the latest buffered keyframe, after
+  re-sending metadata and sequence headers; upstream timestamps continue from
+  where the old connection stopped (one frame later).
+- **Encoder stops while content is still buffered** (delay active): the relay
+  keeps sending the buffered tail at its normal pace, then unpublishes. A new
+  encoder connection on the same route replaces the old session.
+- **Emergency stop is latched.** Disconnecting alone is not enough, because
+  OBS reconnects automatically within seconds. After an emergency stop new
+  publishes are refused (`NetConnection.Connect.Rejected`) until the user
+  allows streaming again from any control surface.
+- **Graceful shutdown** closes the listener first (new connections are
+  refused at TCP level), waits up to 10 s for streams to end, then disconnects
+  the rest.
