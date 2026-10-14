@@ -45,6 +45,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | axum-core | 0.5.6 | MIT | https://github.com/tokio-rs/axum |
 | base64 | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | base64 | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
+| base64ct | 1.8.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | bincode | 2.0.1 | MIT | https://github.com/bincode-org/bincode |
 | bindgen | 0.72.1 | BSD-3-Clause | https://github.com/rust-lang/rust-bindgen |
 | bit-set | 0.10.0 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-set |
@@ -74,6 +75,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | concurrent-queue | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/concurrent-queue |
 | const-field-offset | 0.2.1 | MIT OR Apache-2.0 | https://github.com/slint-ui/slint |
 | const-field-offset-macro | 0.2.1 | MIT OR Apache-2.0 | https://github.com/slint-ui/slint |
+| const-oid | 0.9.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/const-oid |
 | convert_case | 0.10.0 | MIT | https://github.com/rutrum/convert-case |
 | countme | 3.0.1 | MIT OR Apache-2.0 | https://github.com/matklad/countme |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
@@ -86,8 +88,11 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | ctor | 0.10.1 | Apache-2.0 OR MIT | https://github.com/mmastrac/rust-ctor |
 | cursor-icon | 1.2.0 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/cursor-icon |
+| curve25519-dalek | 4.1.3 | BSD-3-Clause | https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek |
+| curve25519-dalek-derive | 0.1.1 | MIT/Apache-2.0 | https://github.com/dalek-cryptography/curve25519-dalek |
 | data-encoding | 2.11.1 | MIT | https://github.com/ia0/data-encoding |
 | data-url | 0.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
+| der | 0.7.10 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/der |
 | derive_more | 2.1.1 | MIT | https://github.com/JelteF/derive_more |
 | derive_more-impl | 2.1.1 | MIT | https://github.com/JelteF/derive_more |
 | digest | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
@@ -101,6 +106,8 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | drm-fourcc | 2.2.0 | MIT | https://github.com/danielzfranklin/drm-fourcc-rs |
 | drm-sys | 0.8.1 | MIT | https://github.com/Smithay/drm-rs |
 | dtor | 0.8.1 | Apache-2.0 OR MIT | https://github.com/mmastrac/rust-ctor |
+| ed25519 | 2.2.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/signatures/tree/master/ed25519 |
+| ed25519-dalek | 2.2.0 | BSD-3-Clause | https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either |
 | endi | 1.1.1 | MIT | https://github.com/zeenix/endi |
 | enumflags2 | 0.7.12 | MIT OR Apache-2.0 | https://github.com/meithecatte/enumflags2 |
@@ -148,6 +155,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | gif | 0.14.2 | MIT OR Apache-2.0 | https://github.com/image-rs/image-gif |
 | gl_generator | 0.14.0 | Apache-2.0 | https://github.com/brendanzab/gl-rs/ |
 | glob | 0.3.4 | MIT OR Apache-2.0 | https://github.com/rust-lang/glob |
+| global-hotkey | 0.8.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/global-hotkey |
 | glow | 0.18.0 | MIT OR Apache-2.0 OR Zlib | https://github.com/grovesNL/glow |
 | glutin | 0.32.3 | Apache-2.0 | https://github.com/rust-windowing/glutin |
 | glutin-winit | 0.5.0 | MIT | https://github.com/rust-windowing/glutin |
@@ -215,6 +223,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | jobserver | 0.1.35 | MIT OR Apache-2.0 | https://github.com/rust-lang/jobserver-rs |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 | https://github.com/pyfisch/keyboard-types |
 | khronos_api | 3.1.0 | Apache-2.0 | https://github.com/brendanzab/gl-rs/ |
+| ksni | 0.3.6 | Unlicense | https://github.com/iovxw/ksni |
 | kurbo | 0.13.1 | Apache-2.0 OR MIT | https://github.com/linebender/kurbo |
 | lazy_static | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
 | libc | 0.2.190 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
@@ -267,6 +276,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | parlance | 0.1.1 | Apache-2.0 OR MIT | https://github.com/linebender/parley |
 | parley | 0.11.1 | Apache-2.0 OR MIT | https://github.com/linebender/parley |
 | parley_data | 0.11.1 | Apache-2.0 OR MIT | https://github.com/linebender/parley |
+| pastey | 0.2.3 | MIT OR Apache-2.0 | https://github.com/as1100k/pastey |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | petgraph | 0.8.3 | MIT OR Apache-2.0 | https://github.com/petgraph/petgraph |
 | phf | 0.13.1 | MIT | https://github.com/rust-phf/rust-phf |
@@ -280,6 +290,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | pin-utils | 0.1.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/pin-utils |
 | pin-weak | 1.1.0 | MIT | https://github.com/sixtyfpsui/pin-weak |
 | piper | 0.2.5 | MIT OR Apache-2.0 | https://github.com/smol-rs/piper |
+| pkcs8 | 0.10.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/pkcs8 |
 | pkg-config | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/pkg-config-rs |
 | png | 0.18.1 | MIT OR Apache-2.0 | https://github.com/image-rs/image-png |
 | polling | 3.11.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/polling |
@@ -299,6 +310,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
 | rand | 0.9.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_chacha | 0.9.0 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| rand_core | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | rand_core | 0.9.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | range-alloc | 0.1.5 | MIT OR Apache-2.0 | https://github.com/gfx-rs/range-alloc |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/raw-window-handle |
@@ -339,9 +351,11 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | serde_repr | 0.1.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/serde-repr |
 | serde_spanned | 1.1.2 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | sha1 | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
+| sha2 | 0.10.9 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | shlex | 1.3.0 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
 | shlex | 2.0.1 | MIT OR Apache-2.0 | https://github.com/comex/rust-shlex |
 | signal-hook-registry | 1.4.8 | MIT OR Apache-2.0 | https://github.com/vorner/signal-hook |
+| signature | 2.2.0 | Apache-2.0 OR MIT | https://github.com/RustCrypto/traits/tree/master/signature |
 | simd-adler32 | 0.3.10 | MIT | https://github.com/mcountryman/simd-adler32 |
 | simplecss | 0.2.2 | Apache-2.0 OR MIT | https://github.com/linebender/simplecss |
 | siphasher | 1.0.4 | MIT OR Apache-2.0 | https://github.com/jedisct1/rust-siphash |
@@ -363,6 +377,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | softbuffer | 0.4.8 | MIT OR Apache-2.0 | https://github.com/rust-windowing/softbuffer |
 | spin_on | 0.1.1 | Apache-2.0 OR MIT |  |
 | spirv | 0.4.0+sdk-1.4.341.0 | Apache-2.0 | https://github.com/gfx-rs/rspirv |
+| spki | 0.7.3 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats/tree/master/spki |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | https://github.com/storyyeller/stable_deref_trait |
 | static_assertions | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nvzqz/static-assertions-rs |
 | strict-num | 0.1.1 | MIT | https://github.com/RazrFalcon/strict-num |
@@ -378,6 +393,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | sys-locale | 0.3.2 | MIT OR Apache-2.0 | https://github.com/1Password/sys-locale |
 | taffy | 0.10.1 | MIT | https://github.com/DioxusLabs/taffy |
 | tar | 0.4.46 | MIT OR Apache-2.0 | https://github.com/composefs/tar-rs |
+| task-local | 0.1.1 | MIT OR Apache-2.0 | https://github.com/BugenZhao/task-local |
 | text-size | 1.1.1 | MIT OR Apache-2.0 | https://github.com/rust-analyzer/text-size |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | thiserror | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
@@ -423,8 +439,11 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-xid |
 | untrusted | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
 | unty | 0.0.4 | MIT OR Apache-2.0 | https://github.com/bincode-org/unty |
+| ureq | 3.4.2 | MIT OR Apache-2.0 | https://github.com/algesten/ureq |
+| ureq-proto | 0.6.4 | MIT OR Apache-2.0 | https://github.com/algesten/ureq-proto |
 | url | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | usvg | 0.48.1 | Apache-2.0 OR MIT | https://github.com/linebender/resvg |
+| utf8-zero | 0.8.1 | MIT OR Apache-2.0 | https://github.com/algesten/utf8-zero |
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf8_iter |
 | uuid | 1.28.0 | Apache-2.0 OR MIT | https://github.com/uuid-rs/uuid |
 | version_check | 0.9.5 | MIT/Apache-2.0 | https://github.com/SergioBenitez/version_check |
@@ -458,12 +477,14 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | windows-result | 0.4.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-strings | 0.5.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.52.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
+| windows-sys | 0.59.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-targets | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-threading | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows_x86_64_msvc | 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | winit | 0.30.13 | Apache-2.0 | https://github.com/rust-windowing/winit |
 | winnow | 1.0.4 | MIT | https://github.com/winnow-rs/winnow |
+| winreg | 0.56.0 | MIT | https://github.com/gentoo90/winreg-rs |
 | wl-clipboard-rs | 0.9.4 | MIT OR Apache-2.0 | https://github.com/YaLTeR/wl-clipboard-rs |
 | writeable | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | x11-dl | 2.21.0 | MIT | https://github.com/AltF02/x11-rs.git |

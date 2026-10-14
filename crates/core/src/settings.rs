@@ -73,7 +73,9 @@ impl Default for Settings {
             version: VERSION,
             routes: default_routes(),
             start_with_os: false,
-            quit_on_close: false,
+            // Linux desktops without a tray host would leave a hidden window
+            // unreachable, so closing quits there unless the user opts in.
+            quit_on_close: !cfg!(windows),
             onboarding_complete: false,
             delay_mode_enabled: true,
             default_buffer_secs: 60,

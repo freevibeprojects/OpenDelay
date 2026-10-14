@@ -17,7 +17,11 @@ fn main() {
         let Ok(text) = std::fs::read_to_string(&po) else { continue };
         let name = text
             .lines()
-            .find_map(|l| l.trim_matches('"').strip_prefix("X-Language-Name:").map(|n| n.trim().trim_end_matches("\\n").to_owned()))
+            .find_map(|l| {
+                l.trim_matches('"')
+                    .strip_prefix("X-Language-Name:")
+                    .map(|n| n.trim().trim_end_matches("\\n").to_owned())
+            })
             .unwrap_or_else(|| code.clone());
         langs.push((code, name));
     }

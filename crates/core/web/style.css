@@ -1,1 +1,83 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
+/* Shared styles for the OBS dock, overlay and setup pages (DESIGN.md tokens). */
+
+@font-face { font-family: Inter; font-weight: 400; src: url(/assets/inter-400.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 600; src: url(/assets/inter-600.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 700; src: url(/assets/inter-700.woff2) format("woff2"); }
+
+:root {
+  --bg-base: #060608;
+  --bg-elevated: #0a0a0d;
+  --bg-surface: #121217;
+  --bg-surface-hover: #1a1a21;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-hover: rgba(255, 255, 255, 0.17);
+  --text-primary: #f4f4f6;
+  --text-secondary: #b3b3be;
+  --text-muted: #7a7a88;
+  --text-disabled: #55555f;
+  --accent: #7f63f0;
+  --accent-hover: #a48ffb;
+  --accent-muted: rgba(127, 99, 240, 0.12);
+  --accent-glow: rgba(127, 99, 240, 0.28);
+  --success: #12b886;
+  --warning: #f2a20c;
+  --error: #ec4646;
+  --on-fill: #060608;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --fast: 140ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --fast: 0ms; }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  min-height: 34px;
+  padding: 0 12px;
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+button:hover { background: var(--bg-surface-hover); border-color: var(--border-hover); }
+button:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+button:disabled { color: var(--text-disabled); cursor: default; background: var(--bg-surface); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-fill); box-shadow: 0 0 18px var(--accent-glow); }
+button.primary:hover { background: var(--accent-hover); }
+button.primary:disabled { background: var(--bg-surface); border-color: var(--border-default); color: var(--text-disabled); box-shadow: none; }
+button.danger { background: var(--error); border-color: var(--error); color: var(--on-fill); }
+button.round { width: 34px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 24px; padding: 0 11px 0 9px; border-radius: 12px;
+  font-size: 12px; font-weight: 600;
+  color: var(--tone, var(--text-secondary));
+  border: 1px solid color-mix(in srgb, var(--tone, var(--text-secondary)) 35%, transparent);
+  background: color-mix(in srgb, var(--tone, var(--text-secondary)) 14%, transparent);
+}
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.bar { height: 6px; border-radius: 3px; background: var(--bg-surface-hover); overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--accent); transition: width 240ms ease-out; }
+
+.muted { color: var(--text-secondary); font-size: 12px; }

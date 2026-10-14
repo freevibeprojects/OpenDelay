@@ -340,6 +340,13 @@ export component DashboardPage {
             }
         }
 
+        if AppState.state != "offline" && Strings.health-summary() != "": Text {
+            text: Strings.health-summary();
+            color: Theme.text-muted;
+            font-size: 12px;
+            horizontal-alignment: center;
+        }
+
         if AppState.findings.length > 0: Card {
             border-color: Theme.warning.with-alpha(0.35);
             VerticalLayout {
@@ -364,8 +371,8 @@ export component DashboardPage {
                     }
                     VerticalLayout {
                         spacing: 2px;
-                        Text { text: f.title; color: Theme.text-primary; font-size: 13px; font-weight: 600; wrap: word-wrap; }
-                        Body { text: f.detail; font-size: 12px; }
+                        Text { text: Strings.finding-title(f.code); color: Theme.text-primary; font-size: 13px; font-weight: 600; wrap: word-wrap; }
+                        Body { text: Strings.finding-detail(f.code, f.value, f.limit); font-size: 12px; }
                     }
                 }
             }

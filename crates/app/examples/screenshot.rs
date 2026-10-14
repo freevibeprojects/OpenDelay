@@ -7,6 +7,12 @@
 slint::include_modules!();
 
 #[allow(dead_code)]
+#[path = "../src/autostart.rs"]
+mod autostart;
+#[allow(dead_code)]
+#[path = "../src/hotkeys.rs"]
+mod hotkeys;
+#[allow(dead_code)]
 #[path = "../src/platform.rs"]
 mod platform;
 #[allow(dead_code)]
@@ -63,8 +69,10 @@ fn main() {
     slint::platform::set_platform(Box::new(Offscreen { window: window.clone(), time: time.clone() })).unwrap();
 
     let dir = std::env::temp_dir().join(format!("opendelay-shot-{}", std::process::id()));
-    let app = App::new(AppOptions { config_dir: Some(dir.join("config")), data_dir: Some(dir.join("data")), tls: None });
-    let ui = ui::create(app).unwrap();
+    let app =
+        App::new(AppOptions { config_dir: Some(dir.join("config")), data_dir: Some(dir.join("data")), tls: None });
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    let ui = ui::create(app, rt.handle().clone()).unwrap();
     let lang = std::env::var("SHOT_LANG").unwrap_or_default();
     let _ = slint::select_bundled_translation(&lang);
     window.set_size(slint::PhysicalSize::new(W, H));

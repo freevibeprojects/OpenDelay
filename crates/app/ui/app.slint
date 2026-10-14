@@ -3,7 +3,7 @@
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { NavItem, IconButton, Toast, Choice } from "widgets.slint";
+import { NavItem, IconButton, Toast, Choice, Card, Button, ButtonKind } from "widgets.slint";
 import { AppState, Strings, RouteItem, StreamItem, Finding, LogItem } from "state.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { MultistreamPage, RouteEditor, RouteEditorModal } from "pages/multistream.slint";
@@ -201,6 +201,41 @@ export component MainWindow inherits Window {
     if RouteEditor.open: RouteEditorModal {
         width: parent.width;
         height: parent.height;
+    }
+
+    if AppState.quitting: Rectangle {
+        background: #000000b3;
+        TouchArea { }
+        Card {
+            width: 420px;
+            height: self.preferred-height;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+                Text {
+                    text: @tr("Waiting for streams to end");
+                    color: Theme.text-primary;
+                    font-size: 18px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: @tr("OpenDelay no longer accepts encoders and quits as soon as the active streams stop (at most 10 seconds).");
+                    color: Theme.text-secondary;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    Button {
+                        text: @tr("Quit now");
+                        kind: ButtonKind.danger;
+                        clicked => { AppState.quit-now(); }
+                    }
+                }
+            }
+        }
     }
 
     if AppState.onboarding-open: Onboarding {

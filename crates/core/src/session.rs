@@ -6,6 +6,7 @@
 use crate::conn::{self, BoxIo, MsgReader, MsgWriter, OUT_CHUNK_SIZE};
 use crate::diag::SessionLog;
 use crate::engine::{Engine, Poll};
+use crate::health::{self, HealthAnalyzer, HealthReport};
 use crate::relay::Shared;
 use crate::routes::{Route, normalize_path};
 use crate::upstream::{self, Upstream, UpstreamError, control_reply, status_of};
@@ -62,6 +63,14 @@ pub struct Session {
     pub log: SessionLog,
     /// (sample time, bytes in at that time, last computed kbit/s)
     meter: Mutex<(Instant, u64, u64)>,
+    health: Mutex<Health>,
+}
+
+struct Health {
+    analyzer: HealthAnalyzer,
+    last_check: Instant,
+    /// Finding codes already written to the session log.
+    logged: Vec<&'static str>,
 }
 
 impl Session {
@@ -94,8 +103,26 @@ impl Session {
         m.2
     }
 
+    pub fn health(&self) -> HealthReport {
+        self.health.lock().unwrap_or_else(|e| e.into_inner()).analyzer.report(Instant::now())
+    }
+
     fn push(&self, msg: Message) {
-        self.engine().push(msg, Instant::now());
+        let now = Instant::now();
+        {
+            let mut h = self.health.lock().unwrap_or_else(|e| e.into_inner());
+            h.analyzer.observe(&msg, now);
+            if now.duration_since(h.last_check) >= Duration::from_secs(5) {
+                h.last_check = now;
+                for f in h.analyzer.report(now).findings {
+                    if !h.logged.contains(&f.code) {
+                        h.logged.push(f.code);
+                        self.log.event(format!("Health ({:?}): {}", f.severity, f.message));
+                    }
+                }
+            }
+        }
+        self.engine().push(msg, now);
         self.wake();
     }
 }
@@ -140,16 +167,17 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     relay.replace_route_sessions(&route.path).await;
 
     let host = UpstreamUrl::parse(&route.upstream).map(|u| u.host).unwrap_or_default();
-    let log = SessionLog::create(
-        relay.log_dir.as_deref(),
-        id,
-        &[
-            ("Session", crate::diag::short_id()),
-            ("Route", format!("{} (/{})", route.name, route.path)),
-            ("Upstream server", host),
-            ("Encoder address", peer.to_string()),
-        ],
-    );
+    let mut header = vec![
+        ("Session", crate::diag::short_id()),
+        ("Route", format!("{} (/{})", route.name, route.path)),
+        ("Upstream server", host),
+        ("Encoder address", peer.to_string()),
+    ];
+    if route.preset == "twitch" {
+        header.push(("Twitch server", route.upstream.clone()));
+    }
+    let log = SessionLog::create(relay.log_dir.as_deref(), id, &header);
+    let preset = route.preset.clone();
     let sess = Arc::new(Session {
         id,
         route,
@@ -164,6 +192,11 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
         bytes_out: AtomicU64::new(0),
         log,
         meter: Mutex::new((Instant::now(), 0, 0)),
+        health: Mutex::new(Health {
+            analyzer: HealthAnalyzer::new(health::platform_limit(&preset), Instant::now()),
+            last_check: Instant::now(),
+            logged: Vec::new(),
+        }),
     });
     relay.add_session(sess.clone());
     sess.log.event(format!("Encoder connected from {peer}"));

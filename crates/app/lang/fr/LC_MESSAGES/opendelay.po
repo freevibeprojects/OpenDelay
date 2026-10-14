@@ -771,3 +771,96 @@ msgstr "Copier"
 
 msgid "Close"
 msgstr "Fermer"
+
+msgid "Waiting for streams to end"
+msgstr "En attente de la fin des streams"
+
+msgid "OpenDelay no longer accepts encoders and quits as soon as the active streams stop (at most 10 seconds)."
+msgstr "OpenDelay n'accepte plus d'encodeurs et se fermera dès que les streams actifs s'arrêteront (10 secondes au plus)."
+
+msgid "Quit now"
+msgstr "Quitter maintenant"
+
+msgid "Twitch server list updated"
+msgstr "Liste des serveurs Twitch mise à jour"
+
+msgid "Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."
+msgstr "Session Wayland : les raccourcis globaux ne fonctionnent que lorsqu'une fenêtre X11 est au premier plan. Associez plutôt les raccourcis de votre bureau au WebSocket des contrôleurs ou à l'API HTTP."
+
+msgid "Could not change the start-with-system setting: {}"
+msgstr "Impossible de modifier le lancement au démarrage : {}"
+
+msgid "Network error: {}"
+msgstr "Erreur réseau : {}"
+
+msgid "Unsupported video codec"
+msgstr "Codec vidéo non pris en charge"
+
+msgid "Keyframe interval too long"
+msgstr "Intervalle d'images clés trop long"
+
+msgid "Keyframes missing"
+msgstr "Images clés manquantes"
+
+msgid "B-frames likely enabled"
+msgstr "Images B probablement activées"
+
+msgid "Irregular timestamps"
+msgstr "Horodatages irréguliers"
+
+msgid "Slow start"
+msgstr "Démarrage lent"
+
+msgid "Resolution above the platform limit"
+msgstr "Résolution au-dessus de la limite de la plateforme"
+
+msgid "{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder."
+msgstr "{} ne permet pas de changement instantané. Utilisez H.264, HEVC ou AV1 dans votre encodeur."
+
+msgid "Keyframes arrive every {}. The delay can only switch on a keyframe; set the keyframe interval to {} or less."
+msgstr "Une image clé arrive toutes les {}. Le délai ne peut changer que sur une image clé ; réglez l'intervalle d'images clés sur {} ou moins."
+
+msgid "No keyframe for {}. The delay cannot switch and reconnects stall."
+msgstr "Aucune image clé depuis {}. Le délai ne peut pas changer et les reconnexions sont bloquées."
+
+msgid "Set B-frames to 0 in your encoder for cleaner switches."
+msgstr "Réglez les images B sur 0 dans votre encodeur pour des changements plus nets."
+
+msgid "The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."
+msgstr "L'encodeur envoie des horodatages désordonnés ou avec des trous. Vérifiez ses réglages et la charge du processeur."
+
+msgid "The first keyframe arrived {} after publishing started."
+msgstr "La première image clé est arrivée {} après le début de la diffusion."
+
+msgid "{} is above the platform limit of {}. Lower the output resolution."
+msgstr "{} dépasse la limite de la plateforme ({}). Baissez la résolution de sortie."
+
+msgid "{} · {} · keyframes every {} · B-frames: {} · {} frames"
+msgstr "{} · {} · images clés toutes les {} · images B : {} · {} images"
+
+msgid "likely"
+msgstr "probables"
+
+msgid "none seen"
+msgstr "aucune détectée"
+
+msgid "Checking…"
+msgstr "Vérification…"
+
+msgid "OpenDelay is up to date."
+msgstr "OpenDelay est à jour."
+
+msgid "Version {} is available."
+msgstr "La version {} est disponible."
+
+msgid "Could not check for updates: {}"
+msgstr "Impossible de rechercher les mises à jour : {}"
+
+msgid "Downloading and verifying the signature…"
+msgstr "Téléchargement et vérification de la signature…"
+
+msgid "Signature verified. Saved to {}."
+msgstr "Signature vérifiée. Enregistré dans {}."
+
+msgid "Download failed: {}"
+msgstr "Échec du téléchargement : {}"

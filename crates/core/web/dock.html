@@ -1,13 +1,171 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Compact control panel for an OBS "Custom Browser Dock". -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="opendelay-token" content="{{TOKEN}}">
-<title>OpenDelay dock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenDelay</title>
 <link rel="stylesheet" href="/assets/style.css">
+<style>
+  body { background: var(--bg-base); padding: 12px; font-size: 13px; }
+  main { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row.between { justify-content: space-between; }
+  .hero { text-align: center; }
+  .number { font-size: 64px; font-weight: 700; line-height: 1.1; margin: 6px 0 2px; }
+  .number small { font-size: 22px; font-weight: 600; color: var(--text-secondary); margin-left: 4px; }
+  .number.active { background: linear-gradient(180deg, #ece6ff 0%, #a690fb 55%, #4a3394 100%);
+                   -webkit-background-clip: text; background-clip: text; color: transparent;
+                   filter: drop-shadow(0 0 18px rgba(127, 99, 240, 0.45)); }
+  .number.active small { color: var(--accent-hover); -webkit-text-fill-color: var(--accent-hover); }
+  .actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+  .stepper { display: flex; align-items: center; gap: 8px; }
+  .stepper output { min-width: 72px; text-align: center; font-weight: 600; font-size: 15px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+  .label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+  #banner { display: none; border-color: color-mix(in srgb, var(--error) 50%, transparent); background: color-mix(in srgb, var(--error) 12%, var(--bg-surface)); }
+  #toast { min-height: 18px; text-align: center; color: var(--warning); font-size: 12px; }
+  #health { display: none; color: var(--warning); font-size: 12px; }
+</style>
 </head>
 <body>
+<main>
+  <div class="card" id="banner" role="alert">
+    <div class="row between">
+      <span data-t="emergency_active"></span>
+      <button id="allow" data-t="allow"></button>
+    </div>
+  </div>
+  <section class="card hero">
+    <div class="row between">
+      <span class="pill" id="pill"></span>
+      <button id="overlay" class="round" data-t-label="toggle_overlay" title="">◐</button>
+    </div>
+    <div class="number" id="number" aria-live="polite"><span id="digits">0</span><small data-t="unit_s"></small></div>
+    <div class="muted" id="caption"></div>
+    <div class="actions">
+      <button class="primary" id="toggle"></button>
+      <button id="golive" data-t="go_live"></button>
+    </div>
+  </section>
+  <section class="card">
+    <div class="row between">
+      <span class="label" data-t="delay"></span>
+      <div class="stepper">
+        <button class="round" id="minus" data-t-label="shorter">−</button>
+        <output id="delay"></output>
+        <button class="round" id="plus" data-t-label="longer">+</button>
+      </div>
+    </div>
+    <div class="row between" style="margin-top: 12px">
+      <span class="label" data-t="buffer"></span>
+      <span class="muted" id="buffertext"></span>
+    </div>
+    <div class="bar" style="margin-top: 6px"><div id="bufferbar"></div></div>
+    <div id="health" style="margin-top: 10px"></div>
+  </section>
+  <section class="stats">
+    <div class="card stat"><div class="label" data-t="bitrate"></div><div class="v" id="bitrate">—</div></div>
+    <div class="card stat"><div class="label" data-t="uptime"></div><div class="v" id="uptime">—</div></div>
+  </section>
+  <button class="danger" id="stop" data-t="emergency"></button>
+  <div id="toast" role="status" aria-live="polite"></div>
+</main>
 <script src="/assets/common.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const TONES = { live: "var(--success)", delayed: "var(--accent-hover)", buffering: "var(--warning)",
+                draining: "var(--success)", recovering: "var(--warning)", connecting: "var(--text-secondary)",
+                offline: "var(--text-secondary)" };
+let last = null;
+let pendingDelay = null;
+let commitTimer = 0;
+let refreshNow = () => {};
+
+function hms(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function render(st, err) {
+  if (!st) {
+    $("pill").textContent = OD.t("unreachable");
+    $("pill").style.setProperty("--tone", "var(--error)");
+    return;
+  }
+  last = st;
+  const d = st.delay;
+  const active = st.connected && ["delayed", "buffering", "draining"].includes(d.state);
+  $("pill").textContent = OD.t("state_" + st.state);
+  $("pill").style.setProperty("--tone", TONES[st.state] || TONES.offline);
+  $("digits").textContent = Math.ceil((active ? d.currentMs : d.configuredMs) / 1000);
+  $("number").classList.toggle("active", active);
+  $("caption").textContent = st.state === "delayed" ? OD.t("caption_delayed", OD.duration(Math.ceil(d.currentMs / 1000)))
+                                                    : OD.t("caption_" + st.state);
+  $("toggle").textContent = active ? OD.t("disable") : OD.t("enable");
+  $("toggle").disabled = !d.modeEnabled || d.state === "draining";
+  $("golive").disabled = !active || d.state === "draining";
+  if (pendingDelay === null) $("delay").textContent = OD.duration(d.configuredMs / 1000);
+  const fill = d.bufferTargetMs ? Math.min(1, d.bufferFillMs / d.bufferTargetMs) : 0;
+  $("bufferbar").style.width = `${Math.round(fill * 100)}%`;
+  $("bufferbar").style.background = d.ready ? "var(--accent)" : "var(--warning)";
+  $("buffertext").textContent = st.connected ? `${Math.floor(d.bufferFillMs / 1000)} / ${Math.floor(d.bufferTargetMs / 1000)} s` : "—";
+  $("bitrate").textContent = st.connected ? `${(st.bitrateKbps / 1000).toFixed(1)} Mb/s` : "—";
+  $("uptime").textContent = st.connected ? hms(st.uptimeMs) : "—";
+  $("banner").style.display = st.emergencyStop ? "block" : "none";
+  $("overlay").textContent = st.overlayVisible ? "◉" : "○";
+  $("overlay").title = st.overlayVisible ? OD.t("overlay_hide") : OD.t("overlay_show");
+  const findings = (st.health && st.health.findings) || [];
+  $("health").style.display = findings.length ? "block" : "none";
+  $("health").textContent = findings.map((f) => "⚠ " + OD.t("health_" + f.code)).join("  ");
+}
+
+async function run(action, extra) {
+  const r = await OD.act(action, extra).catch(() => null);
+  $("toast").textContent = !r ? OD.t("unreachable") : r.success ? "" : OD.t("r_" + r.code);
+  refreshNow();
+}
+
+function step(dir) {
+  const base = pendingDelay ?? (last ? last.delay.configuredMs / 1000 : 30);
+  pendingDelay = Math.min(600, Math.max(1, base + dir));
+  $("delay").textContent = OD.duration(pendingDelay);
+  clearTimeout(commitTimer);
+  commitTimer = setTimeout(() => {
+    const seconds = pendingDelay;
+    pendingDelay = null;
+    run("setDelay", { seconds });
+  }, 700);
+}
+
+// Press and hold accelerates.
+function holdable(button, dir) {
+  let timer = 0;
+  let ticks = 0;
+  const repeat = () => { ticks++; step(ticks > 12 ? 5 * dir : dir); timer = setTimeout(repeat, ticks < 8 ? 140 : 60); };
+  const stop = () => { clearTimeout(timer); timer = 0; };
+  button.addEventListener("pointerdown", () => { ticks = 0; step(dir); timer = setTimeout(repeat, 450); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((e) => button.addEventListener(e, stop));
+  button.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); step(dir); } });
+}
+
+$("toggle").onclick = () => {
+  const active = last && last.connected && ["delayed", "buffering", "draining"].includes(last.delay.state);
+  run(active ? "goLive" : "enableDelay");
+};
+$("golive").onclick = () => run("goLive");
+$("stop").onclick = () => run("emergencyStop");
+$("allow").onclick = () => run("clearEmergencyStop");
+$("overlay").onclick = () => run("toggleOverlay");
+holdable($("minus"), -1);
+holdable($("plus"), 1);
+
+OD.loadLanguage().then(() => { refreshNow = OD.poll(render); });
+</script>
 </body>
 </html>

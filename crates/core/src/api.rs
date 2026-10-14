@@ -42,6 +42,8 @@ const ACTIONS: &[&str] = &[
     "clearEmergencyStop",
 ];
 
+include!(concat!(env!("OUT_DIR"), "/web_langs.rs"));
+
 const DOCK: &str = include_str!("../web/dock.html");
 const OVERLAY: &str = include_str!("../web/overlay.html");
 const SETUP: &str = include_str!("../web/setup.html");
@@ -64,6 +66,7 @@ fn router(app: Arc<App>) -> Router {
         .route("/overlay", get(|State(app): AppState| async move { page(&app, OVERLAY) }))
         .route("/setup", get(|State(app): AppState| async move { page(&app, SETUP) }))
         .route("/assets/{file}", get(asset))
+        .route("/assets/lang/{file}", get(lang))
         .route("/api/status", get(|State(app): AppState| async move { Json(app.reply(Ok(String::new()))) }))
         .route("/api/action", post(action))
         .route("/api/routes", get(routes_list).post(route_create))
@@ -74,6 +77,8 @@ fn router(app: Arc<App>) -> Router {
         )
         .route("/api/network", get(network).put(network_set))
         .route("/api/twitch", get(twitch).put(twitch_set))
+        .route("/api/twitch/servers", get(twitch_servers))
+        .route("/api/update", get(update_check))
         .route("/api/diagnostics", get(diagnostics))
         .route("/api/diagnostics/{id}", get(diagnostic))
         .route("/ws", get(ws))
@@ -141,9 +146,20 @@ async fn asset(Path(file): Path<String>) -> Response {
     let (ctype, body): (&str, &'static [u8]) = match file.as_str() {
         "style.css" => ("text/css; charset=utf-8", include_bytes!("../web/style.css")),
         "common.js" => ("text/javascript; charset=utf-8", include_bytes!("../web/common.js")),
+        "inter-400.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-Regular.woff2")),
+        "inter-600.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-SemiBold.woff2")),
+        "inter-700.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-Bold.woff2")),
         _ => return (StatusCode::NOT_FOUND, "Not found").into_response(),
     };
     ([(header::CONTENT_TYPE, ctype), (header::CACHE_CONTROL, "no-cache")], body).into_response()
+}
+
+async fn lang(Path(file): Path<String>) -> Response {
+    let code = file.strip_suffix(".json").unwrap_or("");
+    match WEB_LANGS.iter().find(|(c, _)| *c == code) {
+        Some((_, body)) => ([(header::CONTENT_TYPE, "application/json; charset=utf-8")], *body).into_response(),
+        None => (StatusCode::NOT_FOUND, "Not found").into_response(),
+    }
 }
 
 /// Envelope: success flag, message, code, fresh status, optional `data`.
@@ -226,6 +242,22 @@ async fn twitch(State(app): AppState) -> Response {
 async fn twitch_set(State(app): AppState, body: Bytes) -> Response {
     let r = parse::<TwitchBody>(&body).and_then(|b| app.set_twitch_server(&b.server));
     respond(&app, r.map(|_| "Twitch server saved.".into()), Value::Null)
+}
+
+async fn twitch_servers(State(app): AppState) -> Response {
+    let r = tokio::task::spawn_blocking(crate::net::twitch_ingests).await;
+    match r.map_err(|e| e.to_string()).and_then(|r| r) {
+        Ok(list) => respond(&app, Ok(String::new()), json!(list)),
+        Err(e) => respond(&app, Err(Problem::new("network", e)), Value::Null),
+    }
+}
+
+async fn update_check(State(app): AppState) -> Response {
+    let r = tokio::task::spawn_blocking(|| crate::update::check(env!("CARGO_PKG_VERSION"))).await;
+    match r.map_err(|e| e.to_string()).and_then(|r| r) {
+        Ok(info) => respond(&app, Ok(String::new()), json!({ "available": info.is_some(), "update": info })),
+        Err(e) => respond(&app, Err(Problem::new("network", e)), Value::Null),
+    }
 }
 
 async fn diagnostics(State(app): AppState) -> Response {

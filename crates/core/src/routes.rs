@@ -109,8 +109,12 @@ pub fn normalize_path(app: &str) -> String {
 /// Only Twitch-owned ingest hosts on port 1935 (plain RTMP).
 pub fn validate_twitch_server(url: &str) -> Result<UpstreamUrl, Problem> {
     let u = UpstreamUrl::parse(url)?;
-    let twitch_host =
-        u.host == "live.twitch.tv" || u.host.ends_with(".twitch.tv") || u.host.ends_with(".contribute.live-video.net");
+    // Twitch's ingest list uses *.contribute.live-video.net and
+    // ingest.global-contribute.live-video.net; live.twitch.tv is the classic endpoint.
+    let twitch_host = u.host == "live.twitch.tv"
+        || u.host.ends_with(".twitch.tv")
+        || u.host.ends_with(".contribute.live-video.net")
+        || u.host.ends_with(".global-contribute.live-video.net");
     if u.tls || u.port != 1935 || !twitch_host {
         return Err(Problem::new(
             "not_twitch",
@@ -172,6 +176,7 @@ mod tests {
         assert!(validate_twitch_server(TWITCH_AUTO).is_ok());
         assert!(validate_twitch_server("rtmp://fra.contribute.live-video.net/app").is_ok());
         assert!(validate_twitch_server("rtmp://fra.contribute.live-video.net:1935/app").is_ok());
+        assert!(validate_twitch_server("rtmp://ingest.global-contribute.live-video.net/app").is_ok());
         assert!(validate_twitch_server("rtmp://fra.contribute.live-video.net:443/app").is_err());
         assert!(validate_twitch_server("rtmps://live.twitch.tv/app").is_err());
         assert!(validate_twitch_server("rtmp://twitch.tv.evil.example/app").is_err());
