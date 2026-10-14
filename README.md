@@ -20,7 +20,7 @@ Licence: [GPL-3.0-only](LICENSE). Third-party components:
 
 ## Building
 
-You need Rust (stable, 1.85 or newer) from <https://rustup.rs>.
+You need Rust (stable, 1.88 or newer) from <https://rustup.rs>.
 
 ### Linux (x86_64, X11 and Wayland)
 
