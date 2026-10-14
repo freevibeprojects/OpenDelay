@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use tokio_rustls::rustls;
 
 fn route(path: &str, upstream: String) -> Route {
-    Route { id: path.into(), name: path.into(), path: path.into(), upstream, enabled: true }
+    Route { id: path.into(), name: path.into(), path: path.into(), upstream, ..Default::default() }
 }
 
 async fn relay_for(routes: Vec<Route>, opts: RelayOptions) -> (Relay, SocketAddr) {
