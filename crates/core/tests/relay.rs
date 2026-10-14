@@ -4,6 +4,7 @@
 mod common;
 
 use common::*;
+use opendelay_core::relay::DelayConfig;
 use opendelay_core::{Relay, RelayOptions, Route};
 use opendelay_rtmp::amf0::Amf0;
 use opendelay_rtmp::msg_type;
@@ -206,4 +207,46 @@ async fn rtmps_upstream() {
     let stream = synthetic_stream(30, 30);
     enc.send(&stream).await;
     ingest.wait_for("media over TLS", |_| ingest.media(0).len() == stream.len()).await;
+}
+
+#[tokio::test]
+async fn delay_actions_through_the_relay() {
+    let ingest = MockIngest::start(Behaviour::default()).await;
+    let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
+    let opts = RelayOptions { delay, ..Default::default() };
+    let (relay, addr) = relay_for(vec![route("t", format!("rtmp://{}/app", ingest.addr))], opts).await;
+    assert_eq!(relay.enable_delay(None).unwrap_err().code(), "no_stream");
+
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+    let stream = synthetic_stream(120, 15); // 4 s, keyframe every 0.5 s
+    let split = stream.iter().position(|m| m.timestamp >= 2000).unwrap();
+    let start = tokio::time::Instant::now();
+    enc.send_paced(&stream[..split], start, 0).await;
+
+    let msg = relay.enable_delay(None).expect("instant enable");
+    assert!(msg.starts_with("Delay on"), "{msg}");
+    assert_eq!(relay.enable_delay(None).unwrap_err().code(), "already_active");
+    assert_eq!(relay.set_delay_mode(false).unwrap_err().code(), "invalid_in_mode");
+    enc.send_paced(&stream[split..], start, 0).await;
+
+    let got = ingest.media(0);
+    let replay = got.iter().position(|m| m.type_id == msg_type::DATA_AMF0 && m.timestamp > 0).expect("config re-sent");
+    let key = got[replay..].iter().find(|m| frame_no(m).is_some()).unwrap();
+    assert!(is_keyframe(key), "replay starts on a keyframe");
+    let before = got[..replay].iter().rev().find_map(frame_no).unwrap();
+    assert!(frame_no(key).unwrap() + 30 <= before, "replay jumps back at least 1 s");
+    for t in [msg_type::AUDIO, msg_type::VIDEO] {
+        let ts: Vec<u32> = got.iter().filter(|m| m.type_id == t).map(|m| m.timestamp).collect();
+        assert!(ts.windows(2).all(|w| w[1] >= w[0]), "track {t} never decreases upstream");
+    }
+
+    relay.go_live().unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(relay.go_live().unwrap_err().code(), "already_live");
+    relay.set_delay_mode(false).unwrap();
+    assert_eq!(relay.enable_delay(None).unwrap_err().code(), "delay_mode_off");
+    relay.set_delay(Duration::from_secs(5)).unwrap();
+    assert_eq!(relay.delay_config().buffer, Duration::from_secs(5), "buffer grows to fit the delay");
+    assert_eq!(relay.set_buffer(Duration::from_secs(1)).unwrap_err().code(), "invalid_value");
 }

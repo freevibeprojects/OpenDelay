@@ -60,3 +60,43 @@ Each entry: the decision, then why.
 - **Graceful shutdown** closes the listener first (new connections are
   refused at TCP level), waits up to 10 s for streams to end, then disconnects
   the rest.
+
+## Delay engine
+
+- **Timing uses arrival time.** A message is due `delay` after it arrived from
+  the encoder (not after its RTMP timestamp), so encoder hiccups are replayed
+  faithfully and the delay is wall-clock accurate.
+- **Instant enable** picks the latest buffered keyframe at least `delay +
+  200 ms` old. The achieved delay is reported as the current delay (it is at
+  most one keyframe interval longer than requested); the requested value is
+  the target.
+- **Aging ("buffering")**: when no keyframe is old enough, output pauses at
+  the current position (no jump, nothing skipped or repeated) until unsent
+  content reaches the requested age. Viewers see a pause of up to the delay,
+  which is the only way to build a delay without replaying content.
+- **"Buffer not ready"** is returned only when nothing usable has been
+  buffered yet (no keyframe received), since aging handles every other case.
+- **Requested delay longer than the buffer**: the buffer grows to the delay
+  (also persisted as the new buffer setting) and the message says the delay
+  becomes fully effective once the buffer has filled.
+- **Changing the delay while active**: longer ages in place, shorter drains
+  faster than real time to the new value; differences under 0.5 s only
+  retarget.
+- **Going live** sends the backlog as fast as the upstream connection accepts
+  it. Bounds: 10 s or 10 000 messages, then a forced switch to the latest
+  keyframe (timestamps stay continuous).
+- **Default delay** is 30 s with a 60 s buffer, so the default enable is
+  instant once the buffer has filled.
+- **Timestamps**: output = source + offset; at every jump the offset is set
+  so the upstream timeline continues one video frame after the last message
+  sent. Audio and video are each clamped to never decrease (global clamping
+  would distort audio when an encoder interleaves tracks loosely); script data
+  is clamped to the highest timestamp sent. 32-bit wrap-around is handled.
+- **Memory**: sent content is kept for the buffer length (whole keyframe
+  intervals); hard limits are 1 GiB per stream and buffer length plus 30 s.
+  When the bitrate makes the buffer target exceed 1 GiB, status reports a
+  degraded state with the sustainable length, and delays above it are refused
+  as unsustainable.
+- **Several streams**: delay actions apply to every publishing stream (one per
+  route) and succeed if any stream accepted; the first refusal is returned
+  otherwise. The delay settings are shared.

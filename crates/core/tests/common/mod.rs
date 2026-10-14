@@ -228,6 +228,14 @@ impl Encoder {
         self.w.flush().await.unwrap();
     }
 
+    /// Send messages in real time: each at `start + timestamp - from_ts`.
+    pub async fn send_paced(&mut self, msgs: &[Message], start: tokio::time::Instant, from_ts: u32) {
+        for m in msgs {
+            tokio::time::sleep_until(start + Duration::from_millis((m.timestamp - from_ts) as u64)).await;
+            self.send(std::slice::from_ref(m)).await;
+        }
+    }
+
     pub async fn unpublish(&mut self) {
         self.w.queue(&Command::new("FCUnpublish", 6.0, Amf0::Null, vec![Amf0::str("k")]).to_message(0));
         let _ =

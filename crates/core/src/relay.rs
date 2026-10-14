@@ -2,9 +2,9 @@
 //! The relay: RTMP listener(s), route lookup, the set of live sessions,
 //! graceful shutdown and emergency stop.
 
-use crate::engine::Engine;
+use crate::engine::{self, Enabled, Engine, Refusal};
 use crate::routes::{Route, normalize_path};
-use crate::session::{self, Session};
+use crate::session::{self, Phase, Session};
 use crate::upstream;
 use std::io;
 use std::net::SocketAddr;
@@ -16,8 +16,39 @@ use tokio::net::TcpListener;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_util::sync::CancellationToken;
 
+/// Delay settings shared by every stream (SPEC §4.1, §4.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DelayConfig {
+    /// Rolling-buffer feature on/off ("delay mode").
+    pub mode_enabled: bool,
+    /// Rolling buffer length.
+    pub buffer: Duration,
+    /// Delay used by "enable delay" without an explicit duration.
+    pub delay: Duration,
+}
+
+impl Default for DelayConfig {
+    fn default() -> Self {
+        DelayConfig { mode_enabled: true, buffer: Duration::from_secs(60), delay: Duration::from_secs(30) }
+    }
+}
+
+impl DelayConfig {
+    fn retain(&self) -> Duration {
+        if self.mode_enabled { self.buffer } else { Duration::ZERO }
+    }
+}
+
+pub const MIN_BUFFER: Duration = Duration::from_secs(5);
+
+fn secs(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 60 && s.is_multiple_of(60) { format!("{} min", s / 60) } else { format!("{s} s") }
+}
+
 #[derive(Default)]
 pub struct RelayOptions {
+    pub delay: DelayConfig,
     /// Folder for per-session logs (`None`: no log files).
     pub log_dir: Option<PathBuf>,
     /// TLS client configuration for `rtmps` upstreams (default: OS trust store).
@@ -32,6 +63,7 @@ pub(crate) struct Shared {
     /// Latched by emergency stop: refuse publishing until cleared.
     emergency: AtomicBool,
     next_id: AtomicU64,
+    delay: Mutex<DelayConfig>,
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
@@ -58,7 +90,11 @@ impl Shared {
     }
 
     pub fn new_engine(&self) -> Engine {
-        Engine::new()
+        Engine::new(self.config().retain())
+    }
+
+    fn config(&self) -> DelayConfig {
+        *self.delay.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn add_session(&self, s: Arc<Session>) {
@@ -102,6 +138,7 @@ impl Relay {
                 stop: CancellationToken::new(),
                 emergency: AtomicBool::new(false),
                 next_id: AtomicU64::new(1),
+                delay: Mutex::new(opts.delay),
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,
@@ -178,5 +215,128 @@ impl Relay {
         while !self.sessions().is_empty() && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+    }
+
+    pub fn delay_config(&self) -> DelayConfig {
+        self.shared.config()
+    }
+
+    fn update_config(&self, f: impl FnOnce(&mut DelayConfig)) {
+        f(&mut self.shared.delay.lock().unwrap_or_else(|e| e.into_inner()));
+    }
+
+    /// Sessions that are publishing (delay actions apply to all of them).
+    fn streaming(&self) -> Vec<Arc<Session>> {
+        self.sessions().into_iter().filter(|s| matches!(s.info().phase, Phase::Live | Phase::Recovering)).collect()
+    }
+
+    /// Run `f` on every streaming session's engine. Succeeds if any session
+    /// accepted; otherwise returns the first refusal.
+    fn apply<T>(&self, f: impl Fn(&mut Engine, Instant) -> Result<T, Refusal>) -> Result<Vec<T>, Refusal> {
+        let (mut ok, mut refused) = (Vec::new(), None);
+        for s in self.streaming() {
+            let r = if s.token.is_cancelled() {
+                Err(Refusal::TransportError)
+            } else if s.info().phase == Phase::Recovering {
+                Err(Refusal::UpstreamRecovering)
+            } else {
+                f(&mut s.engine(), Instant::now())
+            };
+            s.wake();
+            match r {
+                Ok(v) => ok.push(v),
+                Err(e) => {
+                    refused.get_or_insert(e);
+                }
+            }
+        }
+        match (ok.is_empty(), refused) {
+            (false, _) => Ok(ok),
+            (true, Some(e)) => Err(e),
+            (true, None) => Err(Refusal::NoStream),
+        }
+    }
+
+    fn check_delay(d: Duration) -> Result<(), Refusal> {
+        if d.is_zero() || d > engine::MAX_DELAY {
+            return Err(Refusal::InvalidValue("The delay must be between 1 second and 10 minutes."));
+        }
+        Ok(())
+    }
+
+    /// Enable the delay with `delay` or the configured default.
+    pub fn enable_delay(&self, delay: Option<Duration>) -> Result<String, Refusal> {
+        let cfg = self.delay_config();
+        if !cfg.mode_enabled {
+            return Err(Refusal::DelayModeOff);
+        }
+        let d = delay.unwrap_or(cfg.delay);
+        Self::check_delay(d)?;
+        let results = self.apply(|e, now| e.enable(d, now))?;
+        if d > cfg.buffer {
+            self.update_config(|c| c.buffer = d);
+        }
+        Ok(if results.contains(&Enabled::Instant) {
+            format!("Delay on: viewers are now {} behind.", secs(d))
+        } else if d > cfg.buffer || results.contains(&Enabled::Building { buffer_grown: true }) {
+            format!("Buffer enlarged to {}; the delay becomes fully effective once it has filled.", secs(d))
+        } else {
+            format!("Delay is building up to {}.", secs(d))
+        })
+    }
+
+    /// Return to live.
+    pub fn go_live(&self) -> Result<String, Refusal> {
+        self.apply(|e, now| e.go_live(now))?;
+        Ok("Going live: catching up with the live edge.".into())
+    }
+
+    pub fn toggle_delay(&self) -> Result<String, Refusal> {
+        if self.streaming().iter().any(|s| s.engine().is_active()) { self.go_live() } else { self.enable_delay(None) }
+    }
+
+    /// Change the delay: applies to active streams and to the next activation.
+    pub fn set_delay(&self, delay: Duration) -> Result<String, Refusal> {
+        Self::check_delay(delay)?;
+        let active: Vec<Arc<Session>> = self.streaming().into_iter().filter(|s| s.engine().is_active()).collect();
+        if !active.is_empty() {
+            self.apply(|e, now| if e.is_active() { e.set_delay(delay, now) } else { Ok(()) })?;
+        }
+        self.update_config(|c| {
+            c.delay = delay;
+            c.buffer = c.buffer.max(delay);
+        });
+        Ok(format!("Delay set to {}.", secs(delay)))
+    }
+
+    /// Resize the rolling buffer.
+    pub fn set_buffer(&self, buffer: Duration) -> Result<String, Refusal> {
+        if buffer < MIN_BUFFER || buffer > engine::MAX_DELAY {
+            return Err(Refusal::InvalidValue("The buffer must be between 5 seconds and 10 minutes."));
+        }
+        let cfg = DelayConfig { buffer, ..self.delay_config() };
+        let sessions = self.streaming();
+        for s in &sessions {
+            s.engine().check_retain(cfg.retain())?;
+        }
+        for s in &sessions {
+            s.engine().set_retain(cfg.retain());
+        }
+        self.update_config(|c| c.buffer = buffer);
+        Ok(format!("Buffer set to {}.", secs(buffer)))
+    }
+
+    /// Turn the rolling-buffer feature on or off as a whole.
+    pub fn set_delay_mode(&self, on: bool) -> Result<String, Refusal> {
+        let sessions = self.streaming();
+        if !on && sessions.iter().any(|s| s.engine().is_active()) {
+            return Err(Refusal::InvalidInMode("Go live before turning delay mode off."));
+        }
+        self.update_config(|c| c.mode_enabled = on);
+        let retain = self.delay_config().retain();
+        for s in &sessions {
+            s.engine().set_retain(retain);
+        }
+        Ok(if on { "Delay mode on." } else { "Delay mode off." }.into())
     }
 }
