@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "opendelay"
+description = "OpenDelay desktop application: local RTMP relay with a switchable broadcast delay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+opendelay-core = { path = "../core" }

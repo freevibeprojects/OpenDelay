@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "opendelay-core"
+description = "OpenDelay relay, delay engine, settings and local control API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+opendelay-rtmp = { path = "../rtmp" }
