@@ -309,10 +309,7 @@ mod tests {
         assert_eq!(decode_all(&bytes).unwrap(), vec![Amf0::String(long)]);
 
         let typed = [TYPED_OBJECT, 0, 1, b'C', 0, 1, b'k', NULL, 0, 0, OBJECT_END];
-        assert_eq!(
-            decode_all(&typed).unwrap(),
-            vec![Amf0::Object(vec![("k".into(), Amf0::Null)])]
-        );
+        assert_eq!(decode_all(&typed).unwrap(), vec![Amf0::Object(vec![("k".into(), Amf0::Null)])]);
     }
 
     #[test]
@@ -325,7 +322,8 @@ mod tests {
         assert!(decode_all(&deep).is_err());
         // garbage never panics
         for seed in 0u32..2000 {
-            let bytes: Vec<u8> = (0..(seed % 40)).map(|i| (seed.wrapping_mul(2654435761).wrapping_add(i * 97) >> 7) as u8).collect();
+            let bytes: Vec<u8> =
+                (0..(seed % 40)).map(|i| (seed.wrapping_mul(2654435761).wrapping_add(i * 97) >> 7) as u8).collect();
             let _ = decode_all(&bytes);
         }
     }
