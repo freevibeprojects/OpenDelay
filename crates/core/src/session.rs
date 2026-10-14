@@ -60,6 +60,8 @@ pub struct Session {
     pub bytes_in: AtomicU64,
     pub bytes_out: AtomicU64,
     pub log: SessionLog,
+    /// (sample time, bytes in at that time, last computed kbit/s)
+    meter: Mutex<(Instant, u64, u64)>,
 }
 
 impl Session {
@@ -79,6 +81,17 @@ impl Session {
     fn set_info(&self, phase: Phase, attempt: u32, error: Option<String>) {
         *self.info.lock().unwrap_or_else(|e| e.into_inner()) =
             SessionInfo { phase, recovery_attempt: attempt, last_error: error };
+    }
+
+    /// Incoming bitrate, averaged over at least one second.
+    pub fn bitrate_kbps(&self) -> u64 {
+        let mut m = self.meter.lock().unwrap_or_else(|e| e.into_inner());
+        let (now, bytes) = (Instant::now(), self.bytes_in.load(Ordering::Relaxed));
+        let dt = now.duration_since(m.0).as_secs_f64();
+        if dt >= 1.0 {
+            *m = (now, bytes, ((bytes - m.1) as f64 * 8.0 / dt / 1000.0) as u64);
+        }
+        m.2
     }
 
     fn push(&self, msg: Message) {
@@ -150,6 +163,7 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
         bytes_in: AtomicU64::new(0),
         bytes_out: AtomicU64::new(0),
         log,
+        meter: Mutex::new((Instant::now(), 0, 0)),
     });
     relay.add_session(sess.clone());
     sess.log.event(format!("Encoder connected from {peer}"));

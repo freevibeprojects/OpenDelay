@@ -100,3 +100,39 @@ Each entry: the decision, then why.
 - **Several streams**: delay actions apply to every publishing stream (one per
   route) and succeed if any stream accepted; the first refusal is returned
   otherwise. The delay settings are shared.
+
+## Local API and controllers
+
+- **Request policy** (`crates/core/src/api.rs`): the HTTP server binds
+  127.0.0.1 only. Every request must carry a loopback `Host`
+  (`127.0.0.1`/`localhost`/`[::1]` with our port), which defeats DNS
+  rebinding. A present `Origin` must be our own origin; a present
+  `Sec-Fetch-Site` must be `same-origin` or `none`. `POST`/`PUT`/`DELETE`
+  also need the per-run token in `X-OpenDelay-Token`.
+- **Token delivery**: the token is embedded (meta tag) in the dock, overlay
+  and setup pages only. There is no token endpoint. Pages send
+  `X-Frame-Options: DENY` and `frame-ancestors 'none'`, so a malicious site
+  cannot frame the dock to click its buttons.
+- **WebSocket without token**: hardware controllers cannot obtain a per-run
+  token, so the WebSocket relies on the Origin/Host checks (browsers always
+  send `Origin` on WebSocket handshakes; native clients send none). `Origin:
+  null` is rejected.
+- **Refusals over HTTP** return status 200 with `success: false` and a code;
+  malformed requests and validation errors return 400; policy violations 403.
+- **Twitch routes** take their server from the Twitch server setting, so
+  picking an ingest updates every Twitch route.
+- **Route ids**: the default route has id `twitch`; new routes get random ids.
+  Local paths are stored lowercase and compared case-insensitively.
+
+## Settings
+
+- `settings.json` lives in `%APPDATA%\OpenDelay` (Windows) or
+  `$XDG_CONFIG_HOME/opendelay` (Linux); `OPENDELAY_CONFIG_DIR` overrides.
+  Logs live in `%LOCALAPPDATA%\OpenDelay\logs` or
+  `$XDG_DATA_HOME/opendelay/logs`; `OPENDELAY_DATA_DIR` overrides.
+- Version 1 is the first format. `migrate()` upgrades documents step by step
+  (unversioned files are treated as version 1). Unknown fields are ignored,
+  missing ones take defaults, out-of-range values are clamped, a corrupt file
+  is renamed to `settings.json.bad` and defaults are used. Saves are atomic.
+- The update check is **off by default** (opt-in), in keeping with the
+  no-telemetry rule.

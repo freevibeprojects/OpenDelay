@@ -102,6 +102,14 @@ pub fn list_logs(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// Log ids are file stems `YYYYMMDD-HHMMSS-<connection>`; anything else
+/// (separators, dots, …) is rejected so ids can never escape the logs folder.
+pub fn valid_log_id(id: &str) -> bool {
+    let b = id.as_bytes();
+    (17..=40).contains(&b.len())
+        && b.iter().enumerate().all(|(i, c)| if i == 8 || i == 15 { *c == b'-' } else { c.is_ascii_digit() })
+}
+
 /// Keep at most `keep` log files (names sort by start time).
 fn rotate(dir: &Path, keep: usize) {
     for old in list_logs(dir).into_iter().skip(keep) {
@@ -121,6 +129,14 @@ mod tests {
         assert_eq!(utc(t), (2000, 2, 29, 0, 0, 0));
         let t = UNIX_EPOCH + Duration::from_secs(1_791_997_509);
         assert_eq!(iso_utc(t), "2026-10-14T17:05:09Z");
+    }
+
+    #[test]
+    fn log_ids() {
+        assert!(valid_log_id("20261014-170509-3"));
+        for bad in ["../../etc/passwd", "20261014-170509-3/../x", "20261014-170509-", "20261014_170509-3", ""] {
+            assert!(!valid_log_id(bad), "{bad}");
+        }
     }
 
     #[test]
