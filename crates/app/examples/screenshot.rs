@@ -15,6 +15,10 @@ mod hotkeys;
 #[allow(dead_code)]
 #[path = "../src/platform.rs"]
 mod platform;
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+#[path = "../src/portal.rs"]
+mod portal;
 #[allow(dead_code)]
 #[path = "../src/ui.rs"]
 mod ui;
@@ -30,10 +34,16 @@ use std::time::Duration;
 struct Offscreen {
     window: Rc<MinimalSoftwareWindow>,
     time: Rc<Cell<Duration>>,
+    /// The single offscreen window goes to the main window; later requests
+    /// (the tray) get none.
+    handed_out: Cell<bool>,
 }
 
 impl slint::platform::Platform for Offscreen {
     fn create_window_adapter(&self) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> {
+        if self.handed_out.replace(true) {
+            return Err(slint::PlatformError::Other("offscreen: one window only".into()));
+        }
         Ok(self.window.clone())
     }
     fn duration_since_start(&self) -> Duration {
@@ -66,7 +76,12 @@ fn main() {
     std::fs::create_dir_all(&out).unwrap();
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let time = Rc::new(Cell::new(Duration::ZERO));
-    slint::platform::set_platform(Box::new(Offscreen { window: window.clone(), time: time.clone() })).unwrap();
+    slint::platform::set_platform(Box::new(Offscreen {
+        window: window.clone(),
+        time: time.clone(),
+        handed_out: Cell::new(false),
+    }))
+    .unwrap();
 
     let dir = std::env::temp_dir().join(format!("opendelay-shot-{}", std::process::id()));
     let app =

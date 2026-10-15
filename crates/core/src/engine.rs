@@ -55,15 +55,21 @@ pub enum Poll {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     NoStream,
-    BufferNotReady { fill_pct: u8 },
+    BufferNotReady {
+        fill_pct: u8,
+    },
     AlreadyActive,
     AlreadyLive,
     DelayModeOff,
+    /// Detail code: `go_live_first`, `buffer_below_delay`.
     InvalidInMode(&'static str),
     TransitionInProgress,
     UpstreamRecovering,
-    Unsustainable { max_secs: u32 },
+    Unsustainable {
+        max_secs: u32,
+    },
     TransportError,
+    /// Detail code: `delay_range`, `buffer_range`, `not_a_number`.
     InvalidValue(&'static str),
 }
 
@@ -84,6 +90,25 @@ impl Refusal {
             Refusal::InvalidValue(_) => "invalid_value",
         }
     }
+
+    /// Stable sub-code for refusals that have several causes.
+    pub fn detail(&self) -> Option<&'static str> {
+        match self {
+            Refusal::InvalidInMode(d) | Refusal::InvalidValue(d) => Some(d),
+            _ => None,
+        }
+    }
+}
+
+fn detail_text(code: &str) -> &'static str {
+    match code {
+        "go_live_first" => "Go live before turning delay mode off.",
+        "buffer_below_delay" => "The buffer cannot be shorter than the active delay.",
+        "delay_range" => "The delay must be between 1 second and 10 minutes.",
+        "buffer_range" => "The buffer must be between 5 seconds and 10 minutes.",
+        "not_a_number" => "Invalid number of seconds.",
+        _ => "The value is out of range.",
+    }
 }
 
 impl fmt::Display for Refusal {
@@ -96,7 +121,7 @@ impl fmt::Display for Refusal {
             Refusal::AlreadyActive => f.write_str("The delay is already active."),
             Refusal::AlreadyLive => f.write_str("The stream is already live."),
             Refusal::DelayModeOff => f.write_str("Delay mode is turned off."),
-            Refusal::InvalidInMode(m) | Refusal::InvalidValue(m) => f.write_str(m),
+            Refusal::InvalidInMode(d) | Refusal::InvalidValue(d) => f.write_str(detail_text(d)),
             Refusal::TransitionInProgress => f.write_str("Another transition is still in progress."),
             Refusal::UpstreamRecovering => f.write_str("The upstream connection is recovering."),
             Refusal::Unsustainable { max_secs } => {
@@ -354,7 +379,7 @@ impl Engine {
     /// Whether the rolling buffer may shrink to `retain`.
     pub fn check_retain(&self, retain: Duration) -> Result<(), Refusal> {
         if self.target() > retain {
-            return Err(Refusal::InvalidInMode("The buffer cannot be shorter than the active delay."));
+            return Err(Refusal::InvalidInMode("buffer_below_delay"));
         }
         Ok(())
     }
@@ -388,7 +413,7 @@ impl Engine {
             _ => return Err(Refusal::AlreadyActive),
         }
         if delay.is_zero() || delay > MAX_DELAY {
-            return Err(Refusal::InvalidValue("The delay must be between 1 second and 10 minutes."));
+            return Err(Refusal::InvalidValue("delay_range"));
         }
         if self.keys.is_empty() {
             return Err(Refusal::BufferNotReady { fill_pct: self.fill_pct(now, delay) });
@@ -431,7 +456,7 @@ impl Engine {
     /// shorter ones drain. Inactive engines have nothing to change.
     pub fn set_delay(&mut self, delay: Duration, now: Instant) -> Result<(), Refusal> {
         if delay.is_zero() || delay > MAX_DELAY {
-            return Err(Refusal::InvalidValue("The delay must be between 1 second and 10 minutes."));
+            return Err(Refusal::InvalidValue("delay_range"));
         }
         if let Some(max) = self.sustainable_max().filter(|max| delay > *max) {
             return Err(Refusal::Unsustainable { max_secs: max.as_secs() as u32 });
@@ -620,8 +645,10 @@ impl Engine {
 
     /// Largest buffer length that fits in memory at the current bitrate.
     fn sustainable_max(&self) -> Option<Duration> {
-        let bps = self.bytes_per_sec()?;
-        Some(Duration::from_secs_f64(MAX_BUFFER_BYTES as f64 / bps).saturating_sub(MAX_GOP / 2))
+        let bps = self.bytes_per_sec().filter(|b| *b > 0.0)?;
+        // Tiny bitrates give huge (or infinite) values: no practical limit then.
+        let secs = Duration::try_from_secs_f64(MAX_BUFFER_BYTES as f64 / bps).ok()?;
+        Some(secs.saturating_sub(MAX_GOP / 2))
     }
 
     /// Span of buffered content by arrival time.
@@ -776,6 +803,20 @@ pub(crate) mod tests {
         for r in [Refusal::NoStream, Refusal::BufferNotReady { fill_pct: 40 }, Refusal::Unsustainable { max_secs: 9 }] {
             assert!(!r.to_string().is_empty() && !r.code().is_empty());
         }
+    }
+
+    #[test]
+    fn empty_payloads_do_not_break_the_bitrate_estimate() {
+        let t0 = Instant::now();
+        let mut e = Engine::new(Duration::from_secs(60));
+        e.push(video(0, true), t0);
+        for i in 1..200u32 {
+            let t = t0 + Duration::from_millis(i as u64 * 20);
+            e.push(Message::new(msg_type::AUDIO, 1, i * 20, Vec::new()), t);
+        }
+        let now = t0 + Duration::from_secs(5);
+        assert_eq!(e.status(now, Duration::from_secs(1)).degraded, None);
+        assert!(e.enable(Duration::from_secs(1), now).is_ok());
     }
 
     #[test]

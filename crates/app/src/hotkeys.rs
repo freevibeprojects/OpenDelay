@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! Global hotkeys (SPEC §8.1) through `global-hotkey`: works on Windows and
-//! X11. Wayland compositors do not let applications grab keys globally, so
-//! under Wayland the shortcuts only fire while an X11 (XWayland) window has
-//! focus; users there bind desktop shortcuts to the HTTP/WebSocket API instead.
+//! Global hotkeys (SPEC §8.1): `global-hotkey` on Windows and X11; on Wayland
+//! the XDG GlobalShortcuts portal when the desktop provides it (the desktop
+//! confirms the bindings). Without that portal Wayland allows no global grabs;
+//! users there bind desktop shortcuts to the HTTP/WebSocket API instead.
 
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
@@ -41,7 +41,11 @@ impl Which {
 pub struct Binder {
     manager: Option<GlobalHotKeyManager>,
     bound: Vec<(HotKey, Which)>,
+    #[cfg(target_os = "linux")]
+    portal: Option<crate::portal::Portal>,
 }
+
+const ALL: [Which; 4] = [Which::Enable, Which::GoLive, Which::Overlay, Which::Custom];
 
 /// True when global grabs cannot work (Wayland session).
 pub fn wayland() -> bool {
@@ -53,22 +57,46 @@ pub fn wayland() -> bool {
 impl Binder {
     /// Must be created on the main (event loop) thread.
     pub fn new() -> Binder {
-        Binder { manager: GlobalHotKeyManager::new().ok(), bound: Vec::new() }
+        #[cfg(target_os = "linux")]
+        if wayland()
+            && let Some(portal) = crate::portal::Portal::start()
+        {
+            return Binder { manager: None, bound: Vec::new(), portal: Some(portal) };
+        }
+        Binder {
+            manager: GlobalHotKeyManager::new().ok(),
+            bound: Vec::new(),
+            #[cfg(target_os = "linux")]
+            portal: None,
+        }
     }
 
     pub fn available(&self) -> bool {
-        self.manager.is_some()
+        self.manager.is_some() || self.uses_portal()
+    }
+
+    /// Bindings go through the desktop's GlobalShortcuts portal.
+    pub fn uses_portal(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.portal.is_some();
+        #[cfg(not(target_os = "linux"))]
+        false
     }
 
     /// Register the shortcuts from settings; returns the ones that failed.
     pub fn apply(&mut self, settings: &Hotkeys) -> Vec<Which> {
+        let mut copy = settings.clone();
+        #[cfg(target_os = "linux")]
+        if let Some(p) = &self.portal {
+            p.bind(ALL.into_iter().map(|w| (w, w.slot(&mut copy).clone())).filter(|(_, k)| !k.is_empty()).collect());
+            return Vec::new();
+        }
         let Some(m) = &self.manager else { return Vec::new() };
         for (k, _) in self.bound.drain(..) {
             let _ = m.unregister(k);
         }
         let mut failed = Vec::new();
-        let mut copy = settings.clone();
-        for which in [Which::Enable, Which::GoLive, Which::Overlay, Which::Custom] {
+        for which in ALL {
             let text = which.slot(&mut copy).clone();
             if text.is_empty() {
                 continue;
@@ -83,6 +111,10 @@ impl Binder {
 
     /// Would `hotkey` register? (Free and valid.)
     pub fn try_register(&self, hotkey: &str, except: Which) -> Result<(), &'static str> {
+        if self.uses_portal() {
+            // The desktop decides; it reports conflicts in its own dialog.
+            return HotKey::from_str(hotkey).map(|_| ()).map_err(|_| "hotkey_key");
+        }
         let Some(m) = &self.manager else { return Err("hotkey_unsupported") };
         let k = HotKey::from_str(hotkey).map_err(|_| "hotkey_key")?;
         if self.bound.iter().any(|(b, w)| b.id() == k.id() && *w != except) {
@@ -98,6 +130,10 @@ impl Binder {
 
     /// Shortcuts pressed since the last call.
     pub fn pressed(&self) -> Vec<Which> {
+        #[cfg(target_os = "linux")]
+        if let Some(p) = &self.portal {
+            return p.pressed();
+        }
         let mut out = Vec::new();
         while let Ok(e) = GlobalHotKeyEvent::receiver().try_recv() {
             if e.state() == HotKeyState::Pressed {

@@ -148,6 +148,7 @@ export global AppState {
     callback open-url(string);
     callback open-logs-folder();
     callback open-log(string);
+    callback save-log(string);
     callback refresh-logs();
     // preset id, server URL (TikTok/Custom) → error or ""
     callback finish-onboarding(string, string) -> string;
@@ -198,7 +199,11 @@ export global Strings {
         if (code == "already_active") { return @tr("The delay is already on."); }
         if (code == "already_live") { return @tr("You are already live."); }
         if (code == "delay_mode_off") { return @tr("Delay mode is turned off."); }
-        if (code == "invalid_in_mode") { return @tr("That is not possible right now: {}", detail); }
+        if (code == "invalid_in_mode" && detail == "go_live_first") { return @tr("Go live before turning delay mode off."); }
+        if (code == "invalid_in_mode" && detail == "buffer_below_delay") { return @tr("The buffer cannot be shorter than the active delay."); }
+        if (code == "invalid_in_mode") { return @tr("That is not possible right now."); }
+        if (code == "invalid_value" && detail == "delay_range") { return @tr("The delay must be between 1 second and 10 minutes."); }
+        if (code == "invalid_value" && detail == "buffer_range") { return @tr("The buffer must be between 5 seconds and 10 minutes."); }
         if (code == "transition_in_progress") { return @tr("Please wait for the current transition to finish."); }
         if (code == "upstream_recovering") { return @tr("The connection to the platform is recovering. Try again shortly."); }
         if (code == "unsustainable") { return @tr("This delay does not fit in memory at the current bitrate."); }
@@ -219,6 +224,7 @@ export global Strings {
         if (action == "overlay-off") { return @tr("Overlay hidden"); }
         if (action == "emergency") { return @tr("Emergency stop: every stream was disconnected"); }
         if (action == "allow") { return @tr("Streaming allowed again"); }
+        if (action == "log-saved") { return @tr("Log saved to your Downloads folder"); }
         if (action == "twitch-list") { return @tr("Twitch server list updated"); }
         if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
         @tr("Saved")
@@ -241,8 +247,10 @@ export global Strings {
         if (code == "hotkey_key") { return @tr("This key cannot be used for a global shortcut."); }
         if (code == "hotkey_taken") { return @tr("This shortcut is already used by another application or action."); }
         if (code == "hotkey_unsupported") { return @tr("Global hotkeys are not available in this session."); }
+        if (code == "hotkey_portal") { return @tr("Your desktop manages global shortcuts: it asks you to confirm them and can change them in its own settings."); }
         if (code == "hotkey_wayland") { return @tr("Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."); }
         if (code == "autostart") { return @tr("Could not change the start-with-system setting: {}", detail); }
+        if (code == "save_failed") { return @tr("Could not save the file: {}", detail); }
         if (code == "network") { return @tr("Network error: {}", detail); }
         if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
         if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }

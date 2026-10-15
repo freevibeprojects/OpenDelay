@@ -296,3 +296,16 @@ async fn web_assets_and_translations() {
     let font = http(&s, "GET", "/assets/inter-400.woff2", &[], "").await;
     assert!(font.code == 200 && font.head.to_ascii_lowercase().contains("font/woff2"));
 }
+
+#[tokio::test]
+async fn show_window_request_and_security_headers() {
+    let s = start().await;
+    assert_eq!(http(&s, "POST", "/api/window/show", &[], "").await.code, 403, "token required");
+    assert!(!s.app.take_show_request());
+    let r = post(&s, "/api/window/show", "", &[]).await;
+    assert_eq!(r.code, 200);
+    assert!(s.app.take_show_request(), "flag set for the desktop window");
+    assert!(!s.app.take_show_request(), "flag consumed");
+    let head = http(&s, "GET", "/api/status", &[], "").await.head.to_ascii_lowercase();
+    assert!(head.contains("x-content-type-options: nosniff") && head.contains("cache-control: no-store"));
+}

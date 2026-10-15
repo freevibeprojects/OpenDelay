@@ -31,6 +31,15 @@ msgstr "Paramètres"
 msgid "Update"
 msgstr "Mise à jour"
 
+msgid "Waiting for streams to end"
+msgstr "En attente de la fin des streams"
+
+msgid "OpenDelay no longer accepts encoders and quits as soon as the active streams stop (at most 10 seconds)."
+msgstr "OpenDelay n'accepte plus d'encodeurs et se fermera dès que les streams actifs s'arrêteront (10 secondes au plus)."
+
+msgid "Quit now"
+msgstr "Quitter maintenant"
+
 msgid "Show OpenDelay"
 msgstr "Afficher OpenDelay"
 
@@ -448,8 +457,8 @@ msgstr "Actualiser la liste des serveurs Twitch"
 msgid "Accept encoders from"
 msgstr "Accepter les encodeurs depuis"
 
-msgid "This computer and the local network ({}). Port 1935."
-msgstr "Cet ordinateur et le réseau local ({}). Port 1935."
+msgid "This computer and the local network ({}). Port 1935. Anyone on the network can then stream through OpenDelay with their own stream key."
+msgstr "Cet ordinateur et le réseau local ({}). Port 1935. Toute personne du réseau peut alors diffuser via OpenDelay avec sa propre clé de stream."
 
 msgid "no network address found"
 msgstr "aucune adresse réseau trouvée"
@@ -492,6 +501,9 @@ msgstr "Un fichier journal par session de stream. Les clés de stream ne sont ja
 
 msgid "No session logs yet."
 msgstr "Aucun journal de session pour l'instant."
+
+msgid "Save a copy"
+msgstr "Enregistrer une copie"
 
 msgid "Open logs folder"
 msgstr "Ouvrir le dossier des journaux"
@@ -649,8 +661,20 @@ msgstr "Vous êtes déjà en direct."
 msgid "Delay mode is turned off."
 msgstr "Le mode délai est désactivé."
 
-msgid "That is not possible right now: {}"
-msgstr "Impossible pour le moment : {}"
+msgid "Go live before turning delay mode off."
+msgstr "Repassez en direct avant de désactiver le mode délai."
+
+msgid "The buffer cannot be shorter than the active delay."
+msgstr "Le tampon ne peut pas être plus court que le délai actif."
+
+msgid "That is not possible right now."
+msgstr "Impossible pour le moment."
+
+msgid "The delay must be between 1 second and 10 minutes."
+msgstr "Le délai doit être compris entre 1 seconde et 10 minutes."
+
+msgid "The buffer must be between 5 seconds and 10 minutes."
+msgstr "Le tampon doit être compris entre 5 secondes et 10 minutes."
 
 msgid "Please wait for the current transition to finish."
 msgstr "Attendez la fin de la transition en cours."
@@ -693,6 +717,12 @@ msgstr "Arrêt d'urgence : tous les streams ont été déconnectés"
 
 msgid "Streaming allowed again"
 msgstr "Streaming à nouveau autorisé"
+
+msgid "Log saved to your Downloads folder"
+msgstr "Journal enregistré dans votre dossier Téléchargements"
+
+msgid "Twitch server list updated"
+msgstr "Liste des serveurs Twitch mise à jour"
 
 msgid "Saved. Restart OpenDelay for the listener change to take effect."
 msgstr "Enregistré. Redémarrez OpenDelay pour appliquer le changement d'écoute."
@@ -745,44 +775,8 @@ msgstr "Ce raccourci est déjà utilisé par une autre application ou action."
 msgid "Global hotkeys are not available in this session."
 msgstr "Les raccourcis globaux ne sont pas disponibles dans cette session."
 
-msgid "OpenDelay could not listen for encoders on port 1935: {}"
-msgstr "OpenDelay n'a pas pu écouter les encodeurs sur le port 1935 : {}"
-
-msgid "The local web server could not start on port 3000: {}"
-msgstr "Le serveur web local n'a pas pu démarrer sur le port 3000 : {}"
-
-msgid "System default"
-msgstr "Langue du système"
-
-msgid "Automatic (closest server)"
-msgstr "Automatique (serveur le plus proche)"
-
-msgid "{} min"
-msgstr "{} min"
-
-msgid "{} min {} s"
-msgstr "{} min {} s"
-
-msgid "{} s"
-msgstr "{} s"
-
-msgid "Copy"
-msgstr "Copier"
-
-msgid "Close"
-msgstr "Fermer"
-
-msgid "Waiting for streams to end"
-msgstr "En attente de la fin des streams"
-
-msgid "OpenDelay no longer accepts encoders and quits as soon as the active streams stop (at most 10 seconds)."
-msgstr "OpenDelay n'accepte plus d'encodeurs et se fermera dès que les streams actifs s'arrêteront (10 secondes au plus)."
-
-msgid "Quit now"
-msgstr "Quitter maintenant"
-
-msgid "Twitch server list updated"
-msgstr "Liste des serveurs Twitch mise à jour"
+msgid "Your desktop manages global shortcuts: it asks you to confirm them and can change them in its own settings."
+msgstr "Votre bureau gère les raccourcis globaux : il vous demande de les confirmer et permet de les modifier dans ses propres réglages."
 
 msgid "Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."
 msgstr "Session Wayland : les raccourcis globaux ne fonctionnent que lorsqu'une fenêtre X11 est au premier plan. Associez plutôt les raccourcis de votre bureau au WebSocket des contrôleurs ou à l'API HTTP."
@@ -790,8 +784,17 @@ msgstr "Session Wayland : les raccourcis globaux ne fonctionnent que lorsqu'une 
 msgid "Could not change the start-with-system setting: {}"
 msgstr "Impossible de modifier le lancement au démarrage : {}"
 
+msgid "Could not save the file: {}"
+msgstr "Impossible d'enregistrer le fichier : {}"
+
 msgid "Network error: {}"
 msgstr "Erreur réseau : {}"
+
+msgid "OpenDelay could not listen for encoders on port 1935: {}"
+msgstr "OpenDelay n'a pas pu écouter les encodeurs sur le port 1935 : {}"
+
+msgid "The local web server could not start on port 3000: {}"
+msgstr "Le serveur web local n'a pas pu démarrer sur le port 3000 : {}"
 
 msgid "Unsupported video codec"
 msgstr "Codec vidéo non pris en charge"
@@ -864,3 +867,24 @@ msgstr "Signature vérifiée. Enregistré dans {}."
 
 msgid "Download failed: {}"
 msgstr "Échec du téléchargement : {}"
+
+msgid "System default"
+msgstr "Langue du système"
+
+msgid "Automatic (closest server)"
+msgstr "Automatique (serveur le plus proche)"
+
+msgid "{} min"
+msgstr "{} min"
+
+msgid "{} min {} s"
+msgstr "{} min {} s"
+
+msgid "{} s"
+msgstr "{} s"
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Close"
+msgstr "Fermer"

@@ -53,9 +53,12 @@ mod imp {
     }
 
     pub fn set(enabled: bool, exe: &str) -> std::io::Result<()> {
-        let path = entry_path().ok_or_else(|| std::io::Error::other("no config directory"))?;
+        set_at(&entry_path().ok_or_else(|| std::io::Error::other("no config directory"))?, enabled, exe)
+    }
+
+    pub(super) fn set_at(path: &std::path::Path, enabled: bool, exe: &str) -> std::io::Result<()> {
         if !enabled {
-            return match std::fs::remove_file(&path) {
+            return match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
                 _ => Ok(()),
             };
@@ -71,6 +74,20 @@ mod imp {
 
 #[cfg(all(test, not(windows)))]
 mod tests {
+    #[test]
+    fn writes_and_removes_entry() {
+        let dir = std::env::temp_dir().join(format!("opendelay-autostart-{}", std::process::id()));
+        let path = dir.join("autostart/opendelay.desktop");
+        super::imp::set_at(&path, true, "/opt/Open Delay/opendelay").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("[Desktop Entry]\n"));
+        assert!(text.contains("Exec=\"/opt/Open Delay/opendelay\" --minimized\n"));
+        super::imp::set_at(&path, false, "").unwrap();
+        assert!(!path.exists());
+        super::imp::set_at(&path, false, "").unwrap(); // removing twice is fine
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn exec_quoting() {
         assert_eq!(super::imp::quote("/opt/Open Delay/opendelay"), "\"/opt/Open Delay/opendelay\"");

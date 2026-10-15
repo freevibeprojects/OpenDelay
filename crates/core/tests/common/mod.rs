@@ -9,7 +9,7 @@ use opendelay_rtmp::{Command, Message, msg_type};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio_rustls::rustls;
 
 pub const WAIT: Duration = Duration::from_secs(5);
@@ -171,7 +171,14 @@ pub struct Encoder {
 impl Encoder {
     /// Connect + handshake + `connect` command; returns the reply command.
     pub async fn connect(addr: SocketAddr, app: &str) -> (Encoder, Command) {
-        let tcp = TcpStream::connect(addr).await.unwrap();
+        Self::connect_from(addr, app, "127.0.0.1").await
+    }
+
+    /// Connect from a specific local address (e.g. 127.0.0.2 to act as another machine).
+    pub async fn connect_from(addr: SocketAddr, app: &str, local_ip: &str) -> (Encoder, Command) {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind(format!("{local_ip}:0").parse().unwrap()).unwrap();
+        let tcp = socket.connect(addr).await.unwrap();
         let mut io: BoxIo = Box::new(tcp);
         conn::client_handshake(&mut io).await.unwrap();
         let (r, mut w) = conn::split(io);

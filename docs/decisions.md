@@ -202,3 +202,72 @@ Each entry: the decision, then why.
 - **Ports**: 1935 (RTMP) and 3000 (HTTP) by default as specified;
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` move them when another program
   already listens there (the app otherwise shows an error toast).
+
+## Security review (hardening)
+
+- **Route takeover**: a new encoder connection may replace a session on the
+  same route only when it comes from the same IP address (an encoder
+  reconnecting). Any other machine is refused while the route streams, so a
+  LAN peer cannot cut the user's stream.
+- **Resource limits**: at most 32 concurrent encoder connections; encoders
+  must send data at least every 20 s, including before `publish` (otherwise
+  an idle peer could hold an upstream connection open); handshake 10 s,
+  negotiation 30 s; an upstream write that makes no progress for 15 s is
+  treated as a lost connection and recovered.
+- **Stream keys** never reach logs or status: once known, the key is masked
+  in every session-log line and in `lastError` (platforms may echo it in
+  error descriptions). Keys shorter than 6 characters are not masked.
+- **Files**: settings, the logs folder and log files are owner-only (0600 /
+  0700) on Unix. Only well-formed log ids are listed or served.
+- **HTTP**: every response carries `X-Content-Type-Options: nosniff` and API
+  responses `Cache-Control: no-store`, in addition to the Host/Origin/
+  Sec-Fetch-Site checks and the token.
+- **Robustness**: two panics reachable from stream input were fixed (bitrate
+  estimate with empty payloads, very large metadata dimensions). The RTMP
+  parsers and the delay engine were fuzzed with libFuzzer (3.6 M and 1.2 M
+  runs) without crashes or timestamp regressions; the fuzz harnesses are not
+  part of the repository.
+- **LAN mode** is an open relay towards the configured platforms for anyone
+  on the local network who has their own stream key; it is opt-in and the
+  settings say so.
+
+## Performance
+
+- The tokio runtime uses two worker threads (plus the blocking pool for the
+  Twitch list and update downloads).
+- The drifting background moves in small steps twice a second instead of a
+  per-frame animation; a per-frame animation keeps the GPU busy at display
+  rate even when nothing changes.
+- LAN addresses (one syscall per interface) are cached for 10 s instead of
+  being enumerated on every status poll; the UI fetches settings once per
+  refresh.
+- Release builds are stripped.
+
+## Platform integration
+
+- **Slint features**: default features off; enabled are `std`,
+  `compat-1-18` (required), `backend-winit` (X11 + Wayland on Linux, Win32),
+  `renderer-femtovg` (OpenGL, the design's renderer), `renderer-software`
+  (fallback only), `accessibility` and `system-tray`. `slint-build` runs
+  without its default compile-time software-renderer resources.
+- **OpenGL fallback**: OpenGL failures inside the FemtoVG renderer surface as
+  panics after Slint's own renderer fallback has run, so OpenDelay catches
+  them, writes `software-renderer` next to the settings and relaunches with
+  the software renderer (also when showing the window returns an error).
+- **Tray host detection** on Linux asks the session bus for
+  `org.kde.StatusNotifierWatcher`; without it no tray is created and closing
+  the window quits. "Keep in tray" is the default everywhere else.
+- **Wayland global shortcuts** use `org.freedesktop.portal.GlobalShortcuts`
+  when present (a new portal session per binding change); the captured
+  shortcut is the preferred trigger and the desktop has the final say.
+- **Single instance**: a second launch reads the running instance's token from
+  its dock page (local processes may read it) and asks it to show its window
+  via `POST /api/window/show`.
+- **Windows icon**: `build.rs` writes a compiled resource file from
+  `assets/logo.ico` (PNG-compressed images) and passes it to the linker, so
+  no resource compiler is needed for native or cross builds.
+- **Release endpoints**: feed URL, signing key and repository URL can be set at
+  build time (`OPENDELAY_UPDATE_FEED`, `OPENDELAY_UPDATE_KEY`,
+  `OPENDELAY_REPOSITORY`).
+- **Kick** limits (1920×1080) follow Restream's Kick guide; Kick's own help
+  pages could not be found.

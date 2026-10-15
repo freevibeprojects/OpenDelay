@@ -242,7 +242,7 @@ impl HealthAnalyzer {
             );
         }
         if let (Some(w), Some(h), Some((mw, mh))) = (self.width, self.height, self.max_resolution)
-            && (w * h > mw * mh || w.max(h) > mw.max(mh))
+            && (w as u64 * h as u64 > mw as u64 * mh as u64 || w.max(h) > mw.max(mh))
         {
             add(
                 "resolution",
@@ -332,6 +332,18 @@ mod tests {
         for c in ["codec", "keyframes_missing", "slow_start"] {
             assert!(codes(&r).contains(&c), "{c} in {:?}", codes(&r));
         }
+    }
+
+    #[test]
+    fn absurd_metadata_does_not_overflow() {
+        let t0 = Instant::now();
+        let mut h = HealthAnalyzer::new(platform_limit("kick"), t0);
+        let meta = amf0::encode_all(&[
+            Amf0::str("onMetaData"),
+            Amf0::Object(vec![("width".into(), Amf0::Number(99_999.0)), ("height".into(), Amf0::Number(99_999.0))]),
+        ]);
+        h.observe(&Message::new(msg_type::DATA_AMF0, 1, 0, meta), t0);
+        assert!(codes(&h.report(t0)).contains(&"resolution"));
     }
 
     #[test]

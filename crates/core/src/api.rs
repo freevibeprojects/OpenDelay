@@ -80,6 +80,13 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/twitch/servers", get(twitch_servers))
         .route("/api/update", get(update_check))
         .route("/api/diagnostics", get(diagnostics))
+        .route(
+            "/api/window/show",
+            post(|State(app): AppState| async move {
+                app.request_show();
+                respond(&app, Ok(String::new()), Value::Null)
+            }),
+        )
         .route("/api/diagnostics/{id}", get(diagnostic))
         .route("/ws", get(ws))
         .fallback(|| async { (StatusCode::NOT_FOUND, "Not found") })
@@ -122,7 +129,13 @@ pub fn check(app: &App, method: &Method, h: &HeaderMap) -> Result<(), &'static s
 
 async fn guard(State(app): AppState, req: Request, next: Next) -> Response {
     match check(&app, req.method(), req.headers()) {
-        Ok(()) => next.run(req).await,
+        Ok(()) => {
+            let mut res = next.run(req).await;
+            let h = res.headers_mut();
+            h.insert(header::X_CONTENT_TYPE_OPTIONS, header::HeaderValue::from_static("nosniff"));
+            h.entry(header::CACHE_CONTROL).or_insert(header::HeaderValue::from_static("no-store"));
+            res
+        }
         Err(why) => (StatusCode::FORBIDDEN, Json(json!({ "success": false, "code": "forbidden", "message": why })))
             .into_response(),
     }

@@ -26,6 +26,11 @@ use tokio_util::sync::CancellationToken;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const NEGOTIATE_TIMEOUT: Duration = Duration::from_secs(30);
+/// An encoder that sends nothing for this long is gone (or hostile).
+const ENCODER_IDLE: Duration = Duration::from_secs(20);
+/// Writing upstream that makes no progress for this long means the
+/// connection is dead (the kernel would take many minutes to notice).
+const UPSTREAM_STALL: Duration = Duration::from_secs(15);
 pub const MAX_RECOVERY_ATTEMPTS: u32 = 8;
 /// Encoder-facing stream id returned by our `createStream`.
 const ENCODER_STREAM_ID: u32 = 1;
@@ -88,8 +93,9 @@ impl Session {
     }
 
     fn set_info(&self, phase: Phase, attempt: u32, error: Option<String>) {
+        let last_error = error.map(|e| self.log.redact(&e));
         *self.info.lock().unwrap_or_else(|e| e.into_inner()) =
-            SessionInfo { phase, recovery_attempt: attempt, last_error: error };
+            SessionInfo { phase, recovery_attempt: attempt, last_error };
     }
 
     /// Incoming bitrate, averaged over at least one second.
@@ -163,8 +169,12 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
             return;
         }
     };
-    // A new publish on a route replaces a stale one (e.g. an encoder reconnecting).
-    relay.replace_route_sessions(&route.path).await;
+    // The same machine reconnecting replaces its stale session; another
+    // machine cannot take over a route that is streaming.
+    if let Err(reason) = relay.replace_route_sessions(&route.path, peer.ip()).await {
+        let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
+        return;
+    }
 
     let host = UpstreamUrl::parse(&route.upstream).map(|u| u.host).unwrap_or_default();
     let mut header = vec![
@@ -267,7 +277,10 @@ async fn serve(
     // Answer the stream setup locally until `publish` carries the stream key.
     let key = loop {
         let msg = tokio::select! {
-            r = er.read() => r.map_err(io_err)?.ok_or("encoder disconnected before publishing")?,
+            r = timeout(ENCODER_IDLE, er.read()) => r
+                .map_err(|_| "encoder sent nothing before publishing")?
+                .map_err(io_err)?
+                .ok_or("encoder disconnected before publishing")?,
             _ = sess.token.cancelled() => return Err("stopped".into()),
         };
         if let Some(a) = er.ack_due() {
@@ -288,7 +301,12 @@ async fn serve(
                 "createStream" => {
                     ew.queue(&reply("_result", tx, Amf0::Null, vec![Amf0::Number(ENCODER_STREAM_ID as f64)]))
                 }
-                "publish" => break cmd.arg_str(0).unwrap_or("").to_owned(),
+                "publish" => {
+                    let key = cmd.arg_str(0).unwrap_or("").to_owned();
+                    // Platforms may echo the key in error descriptions.
+                    sess.log.set_secret(&key);
+                    break key;
+                }
                 "FCUnpublish" | "deleteStream" | "closeStream" => return Err("encoder ended before publishing".into()),
                 _ if tx > 0.0 => ew.queue(&reply("_result", tx, Amf0::Null, vec![Amf0::Null])),
                 _ => {}
@@ -337,13 +355,14 @@ async fn serve(
 async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) -> Res<()> {
     loop {
         let msg = tokio::select! {
-            r = er.read() => match r {
-                Ok(Some(m)) => m,
-                Ok(None) => {
+            r = timeout(ENCODER_IDLE, er.read()) => match r {
+                Ok(Ok(Some(m))) => m,
+                Ok(Ok(None)) => {
                     sess.log.event("Encoder disconnected");
                     return Ok(());
                 }
-                Err(e) => return Err(io_err(e)),
+                Ok(Err(e)) => return Err(io_err(e)),
+                Err(_) => return Err(format!("encoder sent nothing for {} s", ENCODER_IDLE.as_secs())),
             },
             _ = sess.token.cancelled() => return Err("stopped".into()),
         };
@@ -480,6 +499,7 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
         }
     };
 
+    let stalled = || UpstreamError::Timeout("sending to the platform");
     let write = async {
         let mut flushed = writer.bytes_sent();
         loop {
@@ -503,11 +523,11 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
                 Poll::Wait(t) => Some(Some(t)),
                 Poll::Idle => Some(None),
                 Poll::Finished => {
-                    writer.flush().await?;
+                    timeout(UPSTREAM_STALL, writer.flush()).await.map_err(|_| stalled())??;
                     return Ok(());
                 }
             };
-            writer.flush().await?;
+            timeout(UPSTREAM_STALL, writer.flush()).await.map_err(|_| stalled())??;
             sess.bytes_out.fetch_add(writer.bytes_sent() - flushed, Ordering::Relaxed);
             flushed = writer.bytes_sent();
             if let Some(deadline) = wait {
