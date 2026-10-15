@@ -253,12 +253,12 @@ export component DashboardPage {
                     spacing: 24px;
                     VerticalLayout {
                         spacing: 8px;
-                        Text { text: @tr("Delay"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        Text { text: @tr("Delay"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                         DelayStepper { }
                     }
                     VerticalLayout {
                         spacing: 8px;
-                        Text { text: @tr("Buffer length"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        Text { text: @tr("Buffer length"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                         Select {
                             label: @tr("Buffer length");
                             current: Strings.duration(AppState.buffer-s);
@@ -280,7 +280,7 @@ export component DashboardPage {
                     }
                     VerticalLayout {
                         spacing: 8px;
-                        Text { text: @tr("Delay mode"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; }
+                        Text { text: @tr("Delay mode"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                         VerticalLayout {
                             alignment: center;
                             min-height: 38px;
@@ -306,7 +306,7 @@ export component DashboardPage {
                 VerticalLayout {
                     spacing: 8px;
                     HorizontalLayout {
-                        Text { text: @tr("Buffer"); color: Theme.text-secondary; font-size: 12px; font-weight: 500; horizontal-stretch: 1; }
+                        Text { text: @tr("Buffer"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; horizontal-stretch: 1; }
                         Text {
                             text: AppState.buffer-text;
                             color: AppState.ready ? Theme.text-primary : Theme.warning;

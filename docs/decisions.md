@@ -87,6 +87,12 @@ Each entry: the decision, then why.
   keyframe (timestamps stay continuous).
 - **Default delay** is 30 s with a 60 s buffer, so the default enable is
   instant once the buffer has filled.
+- **Configuration re-sent at a jump** (SPEC §4.2 "sequence headers /
+  metadata"): the audio and video sequence headers and Enhanced RTMP video
+  metadata (colour information) are re-sent at every jump. The script-data
+  `onMetaData` is re-sent only on a new upstream connection: mid-stream,
+  ingests built on libavformat expose it as a new data stream (observed with
+  ffmpeg), and decoders need only the sequence headers.
 - **Timestamps**: output = source + offset; at every jump the offset is set
   so the upstream timeline continues one video frame after the last message
   sent. Audio and video are each clamped to never decrease (global clamping
@@ -182,10 +188,14 @@ Each entry: the decision, then why.
   exists and on demand. Accepted hosts: `live.twitch.tv`, `*.twitch.tv`,
   `*.contribute.live-video.net`, `*.global-contribute.live-video.net`, plain
   RTMP on port 1935.
-- **Updates**: off by default; GitHub "latest release" JSON; download only on
-  request, saved to `<data dir>/updates` after Ed25519 verification of
-  `<asset>.sig`; nothing is executed. Feed URL and public key are placeholders
-  (verification fails closed).
+- **Updates**: off by default (the HTTP endpoint refuses too); GitHub "latest
+  release" JSON; download only on request. The release's `manifest.json`
+  (version, and per platform the archive name and SHA-256) is signed with
+  Ed25519; the signed version must be newer than the running one and the
+  archive is streamed to a temporary file, hashed, and kept in
+  `<data dir>/updates` only if it matches. Nothing is executed. Feed URL and
+  public key are placeholders (verification fails closed). Verification uses
+  `ring` (already linked by rustls) rather than a second Ed25519 crate.
 - **Tray**: Slint's built-in `SystemTrayIcon` (Win32 / StatusNotifierItem), so
   no GTK dependency. Linux defaults to "quit on close" because Slint cannot
   report whether a tray host exists.
@@ -209,25 +219,47 @@ Each entry: the decision, then why.
 - **Route takeover**: a new encoder connection may replace a session on the
   same route only when it comes from the same IP address (an encoder
   reconnecting). Any other machine is refused while the route streams, so a
-  LAN peer cannot cut the user's stream.
-- **Resource limits**: at most 32 concurrent encoder connections; encoders
-  must send data at least every 20 s, including before `publish` (otherwise
-  an idle peer could hold an upstream connection open); handshake 10 s,
-  negotiation 30 s; an upstream write that makes no progress for 15 s is
-  treated as a lost connection and recovered.
+  LAN peer cannot cut the user's stream. A route is taken at `publish`, not at
+  `connect`: a peer that never publishes blocks no one. Taking a route and
+  registering a session are checked under the same lock as emergency stop,
+  so neither can race past it.
+- **Resource limits**:
+  - Connections: 16 from this computer (127.0.0.1 / ::1) and, separately,
+    16 from other computers with at most 4 per address, so LAN peers can
+    never use up the local encoder's places.
+  - Before `publish`: one 30 s deadline from accepting the connection to
+    `publish` (handshake within 10 s), and messages are limited to 64 KiB
+    (real `connect`/`publish` commands are a few hundred bytes).
+  - AMF0 decoding stops after 65 536 values per message (each value costs
+    ~32–56 bytes of memory per 1–3 input bytes); script data over 64 KiB is
+    never parsed as `onMetaData`.
+  - Buffers: 1 GiB per stream and 2 GiB for all streams together.
+  - Encoders must send data at least every 20 s after publishing; an
+    upstream write that makes no progress for 15 s is treated as a lost
+    connection and recovered.
 - **Stream keys** never reach logs or status: once known, the key is masked
   in every session-log line and in `lastError` (platforms may echo it in
   error descriptions). Keys shorter than 6 characters are not masked.
-- **Files**: settings, the logs folder and log files are owner-only (0600 /
-  0700) on Unix. Only well-formed log ids are listed or served.
+- **Files**: settings, the logs folder and log files are created owner-only
+  (0600 / 0700) on Unix. Only well-formed log ids are listed or served.
+  Settings are written to a synced temporary file and renamed; the previous
+  file is kept as `settings.json.bak` and used if the current one is corrupt.
+  Fields unknown to this version are kept on save. Delay changes are saved by
+  a background writer; other settings changes are saved outside the settings
+  lock and report a failed save.
 - **HTTP**: every response carries `X-Content-Type-Options: nosniff` and API
   responses `Cache-Control: no-store`, in addition to the Host/Origin/
-  Sec-Fetch-Site checks and the token.
+  Sec-Fetch-Site checks and the token. Pages have no inline scripts or styles
+  and are served with `Content-Security-Policy: default-src 'self'` and
+  `Referrer-Policy: no-referrer`; only the dock (which sends commands)
+  carries the token.
+- **Network at startup**: none. The Twitch server list is fetched when its
+  picker is first opened (cached 10 minutes); the update check runs only when
+  enabled, and `GET /api/update` refuses while it is off.
 - **Robustness**: two panics reachable from stream input were fixed (bitrate
   estimate with empty payloads, very large metadata dimensions). The RTMP
-  parsers and the delay engine were fuzzed with libFuzzer (3.6 M and 1.2 M
-  runs) without crashes or timestamp regressions; the fuzz harnesses are not
-  part of the repository.
+  parsers and the delay engine are fuzzed with libFuzzer (`fuzz/`, see the
+  README); the engine target checks that upstream timestamps never decrease.
 - **LAN mode** is an open relay towards the configured platforms for anyone
   on the local network who has their own stream key; it is opt-in and the
   settings say so.

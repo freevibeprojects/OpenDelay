@@ -40,21 +40,72 @@ impl DelayConfig {
 }
 
 pub const MIN_BUFFER: Duration = Duration::from_secs(5);
-/// Concurrent encoder connections (LAN mode accepts untrusted peers).
-pub const MAX_CONNECTIONS: usize = 32;
+/// Concurrent encoder connections from this computer (127.0.0.1 / ::1).
+pub const MAX_LOCAL_CONNECTIONS: usize = 16;
+/// Concurrent connections from other computers (LAN mode), in total and per
+/// address: they can never use up the local pool.
+pub const MAX_REMOTE_CONNECTIONS: usize = 16;
+pub const MAX_PER_REMOTE_ADDRESS: usize = 4;
+/// Time from accepting a connection until it publishes.
+pub const NEGOTIATE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Encoders on this computer (other addresses, even 127.0.0.2, count as remote).
+fn is_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4 == std::net::Ipv4Addr::LOCALHOST,
+        IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped() == Some(std::net::Ipv4Addr::LOCALHOST),
+    }
+}
+
+#[derive(Default)]
+struct Connections {
+    local: usize,
+    remote: usize,
+    per_remote: std::collections::HashMap<IpAddr, usize>,
+}
+
+/// One admitted connection; frees its place when dropped.
+struct Admission {
+    shared: Arc<Shared>,
+    ip: IpAddr,
+}
+
+impl Drop for Admission {
+    fn drop(&mut self) {
+        let mut c = self.shared.connections.lock().unwrap_or_else(|e| e.into_inner());
+        if is_local(self.ip) {
+            c.local -= 1;
+        } else {
+            c.remote -= 1;
+            if let Some(n) = c.per_remote.get_mut(&self.ip) {
+                *n -= 1;
+                if *n == 0 {
+                    c.per_remote.remove(&self.ip);
+                }
+            }
+        }
+    }
+}
 
 fn secs(d: Duration) -> String {
     let s = d.as_secs();
     if s >= 60 && s.is_multiple_of(60) { format!("{} min", s / 60) } else { format!("{s} s") }
 }
 
-#[derive(Default)]
 pub struct RelayOptions {
     pub delay: DelayConfig,
     /// Folder for per-session logs (`None`: no log files).
     pub log_dir: Option<PathBuf>,
     /// TLS client configuration for `rtmps` upstreams (default: OS trust store).
     pub tls: Option<Arc<ClientConfig>>,
+    /// Deadline from accepting a connection to its `publish` (tests shorten it).
+    pub negotiate_timeout: Duration,
+}
+
+impl Default for RelayOptions {
+    fn default() -> Self {
+        RelayOptions { delay: DelayConfig::default(), log_dir: None, tls: None, negotiate_timeout: NEGOTIATE_TIMEOUT }
+    }
 }
 
 pub(crate) struct Shared {
@@ -66,8 +117,11 @@ pub(crate) struct Shared {
     emergency: AtomicBool,
     next_id: AtomicU64,
     delay: Mutex<DelayConfig>,
-    /// Shared by all listeners: one permit per open encoder connection.
-    slots: Arc<tokio::sync::Semaphore>,
+    /// Open encoder connections, shared by all listeners.
+    connections: Mutex<Connections>,
+    /// Bytes held by all stream buffers together.
+    buffered: Arc<AtomicU64>,
+    pub negotiate_timeout: Duration,
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
@@ -79,12 +133,7 @@ impl Shared {
     }
 
     pub fn route_for(&self, path: &str) -> Result<Route, String> {
-        if self.emergency.load(Ordering::SeqCst) {
-            return Err("Emergency stop is active in OpenDelay; allow streaming again in the app first.".into());
-        }
-        if self.stop.is_cancelled() {
-            return Err("OpenDelay is shutting down.".into());
-        }
+        self.emergency_or_stopping()?;
         let routes = self.routes.read().unwrap_or_else(|e| e.into_inner());
         match routes.iter().find(|r| normalize_path(&r.path) == path) {
             Some(r) if r.enabled => Ok(r.clone()),
@@ -94,15 +143,63 @@ impl Shared {
     }
 
     pub fn new_engine(&self) -> Engine {
-        Engine::new(self.config().retain())
+        Engine::with_budget(self.config().retain(), self.buffered.clone())
+    }
+
+    /// Admit a connection from `ip`, or `None` when its pool is full.
+    fn admit(self: &Arc<Self>, ip: IpAddr) -> Option<Admission> {
+        let mut c = self.connections.lock().unwrap_or_else(|e| e.into_inner());
+        if is_local(ip) {
+            if c.local >= MAX_LOCAL_CONNECTIONS {
+                return None;
+            }
+            c.local += 1;
+        } else {
+            let mine = c.per_remote.get(&ip).copied().unwrap_or(0);
+            if c.remote >= MAX_REMOTE_CONNECTIONS || mine >= MAX_PER_REMOTE_ADDRESS {
+                return None;
+            }
+            c.remote += 1;
+            c.per_remote.insert(ip, mine + 1);
+        }
+        Some(Admission { shared: self.clone(), ip })
+    }
+
+    fn emergency_or_stopping(&self) -> Result<(), String> {
+        if self.emergency.load(Ordering::SeqCst) {
+            return Err("Emergency stop is active in OpenDelay; allow streaming again in the app first.".into());
+        }
+        if self.stop.is_cancelled() {
+            return Err("OpenDelay is shutting down.".into());
+        }
+        Ok(())
     }
 
     fn config(&self) -> DelayConfig {
         *self.delay.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn add_session(&self, s: Arc<Session>) {
-        self.lock_sessions().push(s);
+    /// Register a session. Checked under the same lock that emergency stop
+    /// takes, so a connection racing an emergency stop cannot slip through.
+    pub fn add_session(&self, s: Arc<Session>) -> Result<(), String> {
+        let mut sessions = self.lock_sessions();
+        self.emergency_or_stopping()?;
+        sessions.push(s);
+        Ok(())
+    }
+
+    /// At `publish`: take the route for `sess`. Fails during an emergency stop
+    /// or when another session already publishes on the route. Atomic, so two
+    /// encoders cannot both win.
+    pub fn claim_route(&self, sess: &Session) -> Result<(), String> {
+        let sessions = self.lock_sessions();
+        self.emergency_or_stopping()?;
+        let path = normalize_path(&sess.route.path);
+        if sessions.iter().any(|s| s.id != sess.id && s.is_claimed() && normalize_path(&s.route.path) == path) {
+            return Err("This route is already receiving a stream from another computer.".into());
+        }
+        sess.claim();
+        Ok(())
     }
 
     pub fn remove_session(&self, id: u64) {
@@ -111,17 +208,19 @@ impl Shared {
 
     /// Before a new publish on `path`: stop the sessions the same machine left
     /// on that route (an encoder reconnecting) and wait (≤ 3 s) for them to
-    /// end. Another machine cannot take over a route that is in use.
+    /// end. Another machine cannot take over a route that is publishing;
+    /// sessions still negotiating do not block anyone (see `claim_route`).
     pub async fn replace_route_sessions(&self, path: &str, peer: IpAddr) -> Result<(), String> {
-        let old: Vec<Arc<Session>> = self
+        let on_route: Vec<Arc<Session>> = self
             .lock_sessions()
             .iter()
             .filter(|s| normalize_path(&s.route.path) == normalize_path(path))
             .cloned()
             .collect();
-        if old.iter().any(|s| s.peer.ip() != peer) {
+        if on_route.iter().any(|s| s.peer.ip() != peer && s.is_claimed()) {
             return Err("This route is already receiving a stream from another computer.".into());
         }
+        let old: Vec<Arc<Session>> = on_route.into_iter().filter(|s| s.peer.ip() == peer).collect();
         for s in &old {
             s.log.event("Replaced by a new encoder connection on the same route");
             s.token.cancel();
@@ -149,7 +248,9 @@ impl Relay {
                 emergency: AtomicBool::new(false),
                 next_id: AtomicU64::new(1),
                 delay: Mutex::new(opts.delay),
-                slots: Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS)),
+                connections: Mutex::new(Connections::default()),
+                buffered: Arc::new(AtomicU64::new(0)),
+                negotiate_timeout: opts.negotiate_timeout,
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,
@@ -162,7 +263,6 @@ impl Relay {
         let listener = TcpListener::bind(addr).await?;
         let local = listener.local_addr()?;
         let shared = self.shared.clone();
-        let slots = self.shared.slots.clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -170,12 +270,12 @@ impl Relay {
                     accepted = listener.accept() => match accepted {
                         Ok((tcp, peer)) => {
                             // Over the limit the connection is simply closed.
-                            let Ok(slot) = slots.clone().try_acquire_owned() else { continue };
+                            let Some(admission) = shared.admit(peer.ip()) else { continue };
                             let id = shared.next_id.fetch_add(1, Ordering::Relaxed);
                             let shared = shared.clone();
                             tokio::spawn(async move {
                                 session::run(shared, tcp, peer, id).await;
-                                drop(slot);
+                                drop(admission);
                             });
                         }
                         // e.g. out of file descriptors: back off briefly
@@ -203,8 +303,14 @@ impl Relay {
     /// Disconnect every stream (encoder and upstream) at once, and refuse new
     /// publishes until [`Relay::clear_emergency`].
     pub fn emergency_stop(&self) {
-        self.shared.emergency.store(true, Ordering::SeqCst);
-        for s in self.sessions() {
+        // Set under the sessions lock: `add_session`/`claim_route` either see
+        // the flag or their session is in the list cancelled here.
+        let sessions = {
+            let list = self.shared.lock_sessions();
+            self.shared.emergency.store(true, Ordering::SeqCst);
+            list.clone()
+        };
+        for s in sessions {
             s.log.event("Emergency stop");
             s.token.cancel();
         }
@@ -369,5 +475,51 @@ impl Relay {
         }
         self.log_all(if on { "Delay mode on" } else { "Delay mode off" });
         Ok(if on { "Delay mode on." } else { "Delay mode off." }.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::test_session;
+
+    #[test]
+    fn emergency_stop_wins_against_late_registration_and_claims() {
+        let relay = Relay::new(vec![], RelayOptions { tls: Some(upstream::default_tls()), ..Default::default() });
+        let negotiating = test_session(1, "t", [127, 0, 0, 1]);
+        relay.shared.add_session(negotiating.clone()).unwrap();
+        // A connection that passed `route_for` just before the stop...
+        relay.emergency_stop();
+        assert!(negotiating.token.is_cancelled(), "registered sessions are cancelled");
+        // ...cannot register or claim afterwards.
+        assert!(relay.shared.add_session(test_session(2, "t", [127, 0, 0, 1])).is_err());
+        assert!(relay.shared.claim_route(&negotiating).is_err());
+        relay.clear_emergency();
+        assert!(relay.shared.claim_route(&negotiating).is_ok());
+    }
+
+    #[test]
+    fn only_one_session_claims_a_route() {
+        let relay = Relay::new(vec![], RelayOptions { tls: Some(upstream::default_tls()), ..Default::default() });
+        let a = test_session(1, "t", [192, 168, 1, 2]);
+        let b = test_session(2, "T/", [192, 168, 1, 3]);
+        relay.shared.add_session(a.clone()).unwrap();
+        relay.shared.add_session(b.clone()).unwrap();
+        assert!(relay.shared.claim_route(&a).is_ok());
+        assert!(relay.shared.claim_route(&b).is_err(), "same route, another computer");
+        let other_route = test_session(3, "u", [192, 168, 1, 3]);
+        relay.shared.add_session(other_route.clone()).unwrap();
+        assert!(relay.shared.claim_route(&other_route).is_ok());
+    }
+
+    #[test]
+    fn connection_pools() {
+        let relay = Relay::new(vec![], RelayOptions { tls: Some(upstream::default_tls()), ..Default::default() });
+        let remote: IpAddr = "192.168.1.9".parse().unwrap();
+        let held: Vec<Admission> = (0..MAX_PER_REMOTE_ADDRESS).map(|_| relay.shared.admit(remote).unwrap()).collect();
+        assert!(relay.shared.admit(remote).is_none(), "per-address limit");
+        assert!(relay.shared.admit("::1".parse().unwrap()).is_some(), "local pool unaffected");
+        drop(held);
+        assert!(relay.shared.admit(remote).is_some(), "places are returned");
     }
 }

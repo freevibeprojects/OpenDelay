@@ -1,0 +1,25 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Styles for the OBS dock (dock.html). */
+body { background: var(--bg-base); padding: 12px; font-size: 13px; }
+main { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 14px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.row.between { justify-content: space-between; }
+.hero { text-align: center; }
+.number { font-size: 64px; font-weight: 700; line-height: 1.1; margin: 6px 0 2px; }
+.number small { font-size: 22px; font-weight: 600; color: var(--text-secondary); margin-left: 4px; }
+.number.active { background: linear-gradient(180deg, #ece6ff 0%, #a690fb 55%, #4a3394 100%);
+                 -webkit-background-clip: text; background-clip: text; color: transparent;
+                 filter: drop-shadow(0 0 18px rgba(127, 99, 240, 0.45)); }
+.number.active small { color: var(--accent-hover); -webkit-text-fill-color: var(--accent-hover); }
+.actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper output { min-width: 72px; text-align: center; font-weight: 600; font-size: 15px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
+.label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+#banner { display: none; border-color: color-mix(in srgb, var(--error) 50%, transparent); background: color-mix(in srgb, var(--error) 12%, var(--bg-surface)); }
+#toast { min-height: 18px; text-align: center; color: var(--warning); font-size: 12px; }
+#health { display: none; margin-top: 10px; color: var(--warning); font-size: 12px; }
+.spaced { margin-top: 12px; }
+.bar { margin-top: 6px; }

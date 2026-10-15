@@ -5,6 +5,7 @@
 use crate::routes::{Route, TWITCH_AUTO, default_routes};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{env, fs, io};
 
@@ -65,6 +66,9 @@ pub struct Settings {
     pub overlay_color: String,
     pub reduce_motion: bool,
     pub background_animation: bool,
+    /// Fields this version does not know (e.g. from a newer version), kept on save.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 impl Default for Settings {
@@ -87,6 +91,7 @@ impl Default for Settings {
             overlay_color: "violet".into(),
             reduce_motion: false,
             background_animation: true,
+            extra: serde_json::Map::new(),
         }
     }
 }
@@ -105,36 +110,48 @@ fn migrate(mut v: Value) -> Value {
 }
 
 impl Settings {
-    /// Parse a settings document. Unknown fields are ignored and missing ones
-    /// take defaults.
+    /// Parse a settings document. Missing fields take defaults; unknown ones
+    /// (and a newer version number) are kept so that saving loses nothing.
     pub fn from_json(text: &str) -> serde_json::Result<Settings> {
         let mut s: Settings = serde_json::from_value(migrate(serde_json::from_str(text)?))?;
-        s.version = VERSION;
         s.sanitize();
         Ok(s)
     }
 
-    /// Load from `path`; missing file → defaults; corrupt file is kept as `.bad`.
+    /// Load from `path`; missing file → defaults. A corrupt file is kept as
+    /// `.bad` and the previous version (`.bak`) is used instead.
     pub fn load(path: &Path) -> Settings {
-        match fs::read_to_string(path) {
-            Ok(text) => Settings::from_json(&text).unwrap_or_else(|_| {
+        let read = |p: &Path| fs::read_to_string(p).ok().map(|text| Settings::from_json(&text));
+        match read(path) {
+            None => Settings::default(),
+            Some(Ok(s)) => s,
+            Some(Err(_)) => {
                 let _ = fs::rename(path, path.with_extension("json.bad"));
-                Settings::default()
-            }),
-            Err(_) => Settings::default(),
+                read(&path.with_extension("json.bak")).and_then(Result::ok).unwrap_or_default()
+            }
         }
     }
 
-    /// Atomic save (write a temporary file, then rename).
+    /// Durable, atomic save: write and sync a temporary file, keep the
+    /// previous file as `.bak`, then rename.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-            crate::diag::make_private(dir);
-        }
+        let dir = path.parent().unwrap_or(Path::new(""));
+        crate::diag::private_dir(dir)?;
         let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, serde_json::to_vec_pretty(self).map_err(io::Error::other)?)?;
-        crate::diag::make_private(&tmp);
-        fs::rename(tmp, path)
+        let _ = fs::remove_file(&tmp); // a leftover may have other permissions
+        let mut file = crate::diag::create_private(&tmp)?;
+        file.write_all(&serde_json::to_vec_pretty(self).map_err(io::Error::other)?)?;
+        file.sync_all()?;
+        drop(file);
+        if path.exists() {
+            fs::copy(path, path.with_extension("json.bak"))?;
+        }
+        fs::rename(&tmp, path)?;
+        #[cfg(unix)]
+        if !dir.as_os_str().is_empty() {
+            fs::File::open(dir)?.sync_all()?; // make the rename itself durable
+        }
+        Ok(())
     }
 
     /// Repair values a hand-edited file may have broken.
@@ -203,8 +220,11 @@ mod tests {
         assert_eq!(s.delay_secs, 45);
         assert_eq!(s.default_buffer_secs, 60);
         assert_eq!(s.routes[0].id, "twitch", "default route restored");
-        // newer files still load
-        assert_eq!(Settings::from_json(r#"{"version": 99, "languageX": 1}"#).unwrap().version, VERSION);
+        // newer files still load, and keep what this version does not know
+        let newer = Settings::from_json(r#"{"version": 99, "languageX": 1}"#).unwrap();
+        assert_eq!((newer.version, &newer.extra["languageX"]), (99, &Value::from(1)));
+        let saved: Value = serde_json::to_value(&s).unwrap();
+        assert_eq!(saved["futureThing"], serde_json::json!([1, 2]), "unknown fields survive a save");
         assert!(Settings::from_json("not json").is_err());
     }
 
@@ -225,9 +245,24 @@ mod tests {
         let s = Settings { delay_secs: 12, ..Default::default() };
         s.save(&path).unwrap();
         assert_eq!(Settings::load(&path).delay_secs, 12);
+        let s = Settings { delay_secs: 13, ..Default::default() };
+        s.save(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            assert_eq!((mode(&dir), mode(&path), mode(&path.with_extension("json.bak"))), (0o700, 0o600, 0o600));
+        }
+        fs::write(&path, "{broken").unwrap();
+        assert_eq!(Settings::load(&path).delay_secs, 12, "falls back to the previous save");
+        assert!(path.with_extension("json.bad").exists());
+        fs::remove_file(path.with_extension("json.bak")).unwrap();
         fs::write(&path, "{broken").unwrap();
         assert_eq!(Settings::load(&path), Settings::default());
-        assert!(path.with_extension("json.bad").exists());
+        // A failing save reports an error (the folder is a file here).
+        let blocked = dir.join("blocked");
+        fs::write(&blocked, "").unwrap();
+        assert!(Settings::default().save(&blocked.join("settings.json")).is_err());
         fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -128,6 +128,23 @@ After changing dependencies, regenerate the licence list:
 python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.md
 ```
 
+## Fuzzing
+
+`fuzz/` holds [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) targets
+(nightly toolchain) for the chunk parser, AMF0, media inspection and the
+delay engine. It is not part of the workspace.
+
+```sh
+cd fuzz
+cargo fuzz run -O chunk_reader -- -malloc_limit_mb=64 -rss_limit_mb=2048 -max_len=1048576
+cargo fuzz run -O amf0         -- -malloc_limit_mb=64 -rss_limit_mb=2048
+cargo fuzz run -O media        -- -malloc_limit_mb=64 -rss_limit_mb=2048
+cargo fuzz run -O engine       -- -malloc_limit_mb=64 -rss_limit_mb=2048
+```
+
+`-malloc_limit_mb` turns a single oversized allocation (e.g. input that
+expands into a huge structure) into a reported crash.
+
 ## Repository layout
 
 | Path | Contents |
@@ -136,14 +153,18 @@ python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.md
 | `crates/core` | Relay, delay engine, health checks, settings, diagnostics, HTTP API and controller WebSocket |
 | `crates/app` | Desktop application (Slint UI, tray, hotkeys, autostart) |
 | `docs/` | Design decisions and the controller protocol |
+| `fuzz/` | Fuzz targets (separate from the workspace) |
 | `SPEC.md`, `DESIGN.md` | Behaviour and visual requirements |
 
 ## Releases and updates
 
 The optional update check reads a release feed (GitHub "latest release"
-format) and keeps a download only after its Ed25519 signature verifies.
-Release builds set three build-time variables; without them the feed URL and
-help links are placeholders and every download is rejected (fail closed):
+format). A download is kept only if it matches a signed manifest: the
+manifest's Ed25519 signature must verify, its version must be newer than the
+running one, and the archive's SHA-256 must be the one it lists for this
+platform. Release builds set three build-time variables; without them the
+feed URL and help links are placeholders and every download is rejected
+(fail closed):
 
 | Variable | Meaning |
 |---|---|
@@ -151,14 +172,23 @@ help links are placeholders and every download is rejected (fail closed):
 | `OPENDELAY_UPDATE_KEY` | Ed25519 public key, 64 hex digits |
 | `OPENDELAY_REPOSITORY` | project URL used by the Help page links |
 
-To create the key and sign a release archive with OpenSSL 3:
+To create the key (once) and sign a release with OpenSSL 3:
 
 ```sh
 openssl genpkey -algorithm ed25519 -out release-key.pem      # once; keep it secret
 openssl pkey -in release-key.pem -pubout -outform DER | tail -c 32 | xxd -p -c 64   # OPENDELAY_UPDATE_KEY
-openssl pkeyutl -sign -inkey release-key.pem -rawin -in opendelay-X.Y.Z-windows-x86_64.zip \
-    | base64 -w0 > opendelay-X.Y.Z-windows-x86_64.zip.sig
+
+V=X.Y.Z
+cat > manifest.json <<JSON
+{ "version": "$V",
+  "files": [
+    { "platform": "linux-x86_64", "name": "opendelay-$V-linux-x86_64.tar.gz",
+      "sha256": "$(sha256sum opendelay-$V-linux-x86_64.tar.gz | cut -d' ' -f1)" },
+    { "platform": "windows-x86_64", "name": "opendelay-$V-windows-x86_64.zip",
+      "sha256": "$(sha256sum opendelay-$V-windows-x86_64.zip | cut -d' ' -f1)" } ] }
+JSON
+openssl pkeyutl -sign -inkey release-key.pem -rawin -in manifest.json | base64 -w0 > manifest.json.sig
 ```
 
-Upload the archive (its name must contain `windows-x86_64` or `linux-x86_64`)
-and the `.sig` file as release assets.
+Upload both archives (names containing `linux-x86_64` / `windows-x86_64`),
+`manifest.json` and `manifest.json.sig` as release assets.

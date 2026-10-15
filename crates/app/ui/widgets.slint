@@ -201,8 +201,9 @@ export component Pill {
                     height: 7px;
                     border-radius: 3.5px;
                     background: root.color;
+                    // Stepped, not animated: a tweened opacity repaints the
+                    // window at display rate for as long as the pill is shown.
                     opacity: root.pulse && !Theme.reduce-motion ? (blink.on ? 1 : 0.35) : 1;
-                    animate opacity { duration: 700ms; easing: ease-in-out; }
                 }
             }
             Text {
@@ -286,7 +287,7 @@ export component SettingRow {
         VerticalLayout {
             alignment: center;
             spacing: 3px;
-            Text { text: root.title; color: Theme.text-primary; font-size: 14px; font-weight: 500; wrap: word-wrap; }
+            Text { text: root.title; color: Theme.text-primary; font-size: 14px; font-weight: 600; wrap: word-wrap; }
             if root.description != "": Body { text: root.description; font-size: 12px; }
         }
         Rectangle { horizontal-stretch: 1; }
@@ -484,6 +485,8 @@ export component Select {
     in property <string> label;
     in property <length> list-width: self.width;
     callback chosen(string);
+    // before the list opens (e.g. to load choices on demand)
+    callback opened();
     min-height: 38px;
     min-width: 160px;
     accessible-role: combobox;
@@ -492,6 +495,7 @@ export component Select {
     fs := FocusScope {
         key-pressed(e) => {
             if (e.text == " " || e.text == Key.Return || e.text == Key.DownArrow) {
+                root.opened();
                 popup.show();
                 return accept;
             }
@@ -523,7 +527,10 @@ export component Select {
     }
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { popup.show(); }
+        clicked => {
+            root.opened();
+            popup.show();
+        }
     }
     FocusRing { width: parent.width + 6px; height: parent.height + 6px; show: fs.has-focus; }
 
@@ -641,7 +648,7 @@ export component StatCard inherits Card {
         HorizontalLayout {
             spacing: 8px;
             Icon { source: root.icon; tint: root.tint; width: 16px; height: 16px; }
-            Text { text: root.label; color: Theme.text-secondary; font-size: 12px; font-weight: 500; vertical-alignment: center; }
+            Text { text: root.label; color: Theme.text-secondary; font-size: 12px; font-weight: 600; vertical-alignment: center; }
         }
         Text { text: root.value; color: Theme.text-primary; font-size: 22px; font-weight: 600; overflow: elide; }
     }
@@ -795,7 +802,7 @@ export component Toast inherits Rectangle {
             text: root.text;
             color: Theme.text-primary;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -825,7 +832,7 @@ export component Link {
             text: root.text;
             color: ta.has-hover ? Theme.text-primary : Theme.accent-hover;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             vertical-alignment: center;
         }
         VerticalLayout {

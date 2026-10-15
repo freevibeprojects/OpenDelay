@@ -20,7 +20,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 if-addrs = "0.15"
 getrandom = "0.2"
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "_ring"] }
-ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+ring = "0.17"
 base64 = "0.22"
 
 [dev-dependencies]

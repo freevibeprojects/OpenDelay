@@ -99,6 +99,7 @@ export component SettingsPage {
                             choices: AppState.twitch-servers;
                             value: AppState.twitch-server;
                             current: AppState.twitch-server-label;
+                            opened => { AppState.load-twitch-servers(); }
                             chosen(v) => { AppState.set-twitch-server(v); }
                         }
                         IconButton {

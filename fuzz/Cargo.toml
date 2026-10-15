@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Fuzz targets (cargo-fuzz, nightly). Not part of the workspace; see the main README.
+[package]
+name = "opendelay-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+opendelay-rtmp = { path = "../crates/rtmp" }
+opendelay-core = { path = "../crates/core" }
+
+# Its own workspace, so the main one never builds it.
+[workspace]
+
+[[bin]]
+name = "chunk_reader"
+path = "fuzz_targets/chunk_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "amf0"
+path = "fuzz_targets/amf0.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "media"
+path = "fuzz_targets/media.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "engine"
+path = "fuzz_targets/engine.rs"
+test = false
+doc = false
+bench = false

@@ -39,17 +39,23 @@ mod imp {
         Some(config.join("autostart/opendelay.desktop"))
     }
 
-    /// Quote an argument for a desktop entry `Exec` key.
+    /// Quote an argument for a desktop entry `Exec` key: the `Exec` quoting
+    /// rules, `%` as `%%`, then the string-value escape that readers undo
+    /// first (every backslash doubled again).
     pub(super) fn quote(arg: &str) -> String {
         let mut s = String::from("\"");
         for c in arg.chars() {
-            if matches!(c, '"' | '`' | '$' | '\\') {
-                s.push('\\');
+            match c {
+                '"' | '`' | '$' | '\\' => {
+                    s.push('\\');
+                    s.push(c);
+                }
+                '%' => s.push_str("%%"),
+                _ => s.push(c),
             }
-            s.push(c);
         }
         s.push('"');
-        s
+        s.replace('\\', "\\\\")
     }
 
     pub fn set(enabled: bool, exe: &str) -> std::io::Result<()> {
@@ -91,6 +97,7 @@ mod tests {
     #[test]
     fn exec_quoting() {
         assert_eq!(super::imp::quote("/opt/Open Delay/opendelay"), "\"/opt/Open Delay/opendelay\"");
-        assert_eq!(super::imp::quote("/a\"b$c"), "\"/a\\\"b\\$c\"");
+        assert_eq!(super::imp::quote("/a\"b$c"), "\"/a\\\\\"b\\\\$c\"");
+        assert_eq!(super::imp::quote("/x%y\\z"), "\"/x%%y\\\\\\\\z\"", "a literal backslash takes four");
     }
 }

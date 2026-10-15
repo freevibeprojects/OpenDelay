@@ -2,8 +2,9 @@
 //! Stream health checks (SPEC §5): inspects the encoder's stream and flags
 //! settings that break or degrade instant switching.
 
+use crate::engine::{Parsed, Unwrap};
 use opendelay_rtmp::amf0::Amf0;
-use opendelay_rtmp::media::{self, Codec, VideoKind};
+use opendelay_rtmp::media::{Codec, VideoKind};
 use opendelay_rtmp::{Message, msg_type};
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -69,6 +70,7 @@ pub struct HealthAnalyzer {
     intervals: VecDeque<u64>,
     cts_frames: u32,
     last_ts: [Option<i64>; 2],
+    clocks: [Unwrap; 2],
     backwards: u32,
     gaps: u32,
 }
@@ -99,16 +101,21 @@ impl HealthAnalyzer {
             intervals: VecDeque::new(),
             cts_frames: 0,
             last_ts: [None, None],
+            clocks: [Unwrap::default(); 2],
             backwards: 0,
             gaps: 0,
         }
     }
 
     pub fn observe(&mut self, msg: &Message, now: Instant) {
-        let ts = msg.timestamp as i64;
+        self.observe_parsed(msg, &Parsed::of(msg), now);
+    }
+
+    /// [`HealthAnalyzer::observe`] with the message already inspected.
+    pub fn observe_parsed(&mut self, msg: &Message, parsed: &Parsed, now: Instant) {
         match msg.type_id {
             msg_type::VIDEO => {
-                let Some(v) = media::parse_video(&msg.payload) else { return };
+                let Some(v) = parsed.video else { return };
                 if v.track_id.unwrap_or(0) != 0 {
                     return;
                 }
@@ -119,7 +126,7 @@ impl HealthAnalyzer {
                     return;
                 }
                 self.frames += 1;
-                self.track_time(1, ts);
+                let ts = self.track_time(1, msg.timestamp);
                 if v.composition_time != 0 {
                     self.cts_frames += 1;
                 }
@@ -138,11 +145,11 @@ impl HealthAnalyzer {
             }
             msg_type::AUDIO => {
                 if !msg.payload.is_empty() {
-                    self.track_time(0, ts);
+                    self.track_time(0, msg.timestamp);
                 }
             }
             _ => {
-                if let Some(meta) = media::metadata(msg.amf0_body()) {
+                if let Some(meta) = &parsed.metadata {
                     self.width = num(meta.get("width")).or(self.width);
                     self.height = num(meta.get("height")).or(self.height);
                 }
@@ -150,7 +157,9 @@ impl HealthAnalyzer {
         }
     }
 
-    fn track_time(&mut self, track: usize, ts: i64) {
+    /// Unwrapped timestamp of a track's message, counting irregularities.
+    fn track_time(&mut self, track: usize, raw: u32) -> i64 {
+        let ts = self.clocks[track].next(raw);
         if let Some(last) = self.last_ts[track] {
             if ts < last {
                 self.backwards += 1;
@@ -159,6 +168,7 @@ impl HealthAnalyzer {
             }
         }
         self.last_ts[track] = Some(ts);
+        ts
     }
 
     pub fn report(&self, now: Instant) -> HealthReport {
@@ -231,7 +241,8 @@ impl HealthAnalyzer {
             Some(t) => t.duration_since(self.started),
             None => now.duration_since(self.started),
         };
-        if start_wait > SLOW_START {
+        // Only video streams have a keyframe to wait for.
+        if self.frames > 0 && start_wait > SLOW_START {
             add(
                 "slow_start",
                 Severity::Low,
@@ -344,6 +355,30 @@ mod tests {
         ]);
         h.observe(&Message::new(msg_type::DATA_AMF0, 1, 0, meta), t0);
         assert!(codes(&h.report(t0)).contains(&"resolution"));
+    }
+
+    #[test]
+    fn audio_only_stream_is_healthy() {
+        let t0 = Instant::now();
+        let mut h = HealthAnalyzer::new(None, t0);
+        for i in 0..500u32 {
+            h.observe(
+                &Message::new(msg_type::AUDIO, 1, i * 21, vec![0xAF, 1, 0x21]),
+                t0 + Duration::from_millis(i as u64 * 21),
+            );
+        }
+        assert!(h.report(t0 + Duration::from_secs(10)).findings.is_empty());
+    }
+
+    #[test]
+    fn timestamp_wrap_is_not_irregular() {
+        let t0 = Instant::now();
+        let mut h = HealthAnalyzer::new(None, t0);
+        let start = u32::MAX - 100;
+        for i in 0..10u32 {
+            h.observe(&video(start.wrapping_add(i * 33), i == 0, 0), t0);
+        }
+        assert!(!codes(&h.report(t0)).contains(&"timestamps"));
     }
 
     #[test]

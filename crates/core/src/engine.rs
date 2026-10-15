@@ -18,10 +18,13 @@
 //! clamped so neither track ever goes backwards; script data is clamped to the
 //! highest timestamp sent on any track.
 
-use opendelay_rtmp::media::{self, VideoKind};
+use opendelay_rtmp::amf0::Amf0;
+use opendelay_rtmp::media::{self, AudioInfo, VideoInfo, VideoKind};
 use opendelay_rtmp::{Message, msg_type};
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Streams whose keyframes are further apart than this are trimmed mid-GOP.
@@ -35,6 +38,8 @@ pub const DRAIN_MAX_MESSAGES: u32 = 10_000;
 const RETARGET_TOLERANCE: Duration = Duration::from_millis(500);
 /// Memory cap for one stream's buffer.
 pub const MAX_BUFFER_BYTES: u64 = 1 << 30;
+/// Memory cap for all streams' buffers together (several routes, LAN peers).
+pub const MAX_TOTAL_BUFFER_BYTES: u64 = 2 << 30;
 pub const MAX_DELAY: Duration = Duration::from_secs(600);
 
 #[derive(Debug)]
@@ -200,15 +205,35 @@ fn ms(d: Duration) -> u64 {
     d.as_millis() as u64
 }
 
+/// A media message's inspection results, computed once per message and shared
+/// by the engine and the health checks.
+#[derive(Debug, Clone, Default)]
+pub struct Parsed {
+    pub video: Option<VideoInfo>,
+    pub audio: Option<AudioInfo>,
+    /// `onMetaData` object of a script-data message.
+    pub metadata: Option<Amf0>,
+}
+
+impl Parsed {
+    pub fn of(msg: &Message) -> Parsed {
+        match msg.type_id {
+            msg_type::VIDEO => Parsed { video: media::parse_video(&msg.payload), ..Default::default() },
+            msg_type::AUDIO => Parsed { audio: media::parse_audio(&msg.payload), ..Default::default() },
+            _ => Parsed { metadata: media::metadata(msg.amf0_body()), ..Default::default() },
+        }
+    }
+}
+
 /// Unwraps 32-bit RTMP timestamps into an i64 timeline.
 #[derive(Default, Clone, Copy)]
-struct Unwrap {
+pub(crate) struct Unwrap {
     last: Option<u32>,
     epoch: i64,
 }
 
 impl Unwrap {
-    fn next(&mut self, raw: u32) -> i64 {
+    pub(crate) fn next(&mut self, raw: u32) -> i64 {
         if let Some(last) = self.last {
             if raw < last && last - raw > 1 << 31 {
                 self.epoch += 1 << 32;
@@ -248,6 +273,8 @@ pub struct Engine {
     configs: Vec<(ConfigKey, Message)>,
     /// Skip to the next key entry and re-send configuration before continuing.
     resync: bool,
+    /// The next start goes to a new upstream connection (re-send script data too).
+    fresh_upstream: bool,
     offset: i64,
     last_out: [Option<i64>; 3],
     clocks: [Unwrap; 3],
@@ -257,6 +284,8 @@ pub struct Engine {
     seen_video: bool,
     input_done: bool,
     bytes: u64,
+    /// Bytes buffered by every engine sharing this budget (including this one).
+    total: Arc<AtomicU64>,
     /// Rolling buffer length: sent content kept for future instant switches.
     retain: Duration,
 }
@@ -267,8 +296,20 @@ impl Default for Engine {
     }
 }
 
+impl Drop for Engine {
+    fn drop(&mut self) {
+        self.total.fetch_sub(self.bytes, Ordering::Relaxed);
+    }
+}
+
 impl Engine {
     pub fn new(retain: Duration) -> Self {
+        Self::with_budget(retain, Arc::default())
+    }
+
+    /// Like [`Engine::new`], counting buffered bytes against a budget shared
+    /// with other engines ([`MAX_TOTAL_BUFFER_BYTES`]).
+    pub fn with_budget(retain: Duration, total: Arc<AtomicU64>) -> Self {
         Engine {
             entries: VecDeque::new(),
             base: 0,
@@ -279,6 +320,7 @@ impl Engine {
             pending: VecDeque::new(),
             configs: Vec::new(),
             resync: false,
+            fresh_upstream: false,
             offset: 0,
             last_out: [None; 3],
             clocks: [Unwrap::default(); 3],
@@ -287,6 +329,7 @@ impl Engine {
             seen_video: false,
             input_done: false,
             bytes: 0,
+            total,
             retain,
         }
     }
@@ -305,13 +348,19 @@ impl Engine {
 
     /// Add a media message (audio, video or script data) received from the encoder.
     pub fn push(&mut self, msg: Message, now: Instant) {
+        let parsed = Parsed::of(&msg);
+        self.push_parsed(msg, &parsed, now);
+    }
+
+    /// [`Engine::push`] with the message already inspected.
+    pub fn push_parsed(&mut self, msg: Message, parsed: &Parsed, now: Instant) {
         let track = track_of(msg.type_id);
         let ts = self.clocks[track].next(msg.timestamp);
         let mut key = false;
         let mut config = None;
         match track {
             VIDEO => {
-                if let Some(v) = media::parse_video(&msg.payload) {
+                if let Some(v) = parsed.video {
                     self.seen_video = true;
                     key = v.is_primary_keyframe();
                     if v.is_config() {
@@ -327,7 +376,7 @@ impl Engine {
                 }
             }
             AUDIO => {
-                if let Some(a) = media::parse_audio(&msg.payload) {
+                if let Some(a) = parsed.audio {
                     key = !self.seen_video;
                     if a.is_config {
                         config = Some((msg_type::AUDIO, a.track_id.unwrap_or(0), 0));
@@ -335,7 +384,7 @@ impl Engine {
                 }
             }
             _ => {
-                if media::metadata(msg.amf0_body()).is_some() {
+                if parsed.metadata.is_some() {
                     config = Some((msg_type::DATA_AMF0, 0, 0));
                 }
             }
@@ -350,6 +399,7 @@ impl Engine {
             self.keys.push_back(self.end());
         }
         self.bytes += msg.payload.len() as u64;
+        self.total.fetch_add(msg.payload.len() as u64, Ordering::Relaxed);
         self.entries.push_back(Entry { msg, ts, at: now });
         self.trim(now);
     }
@@ -370,6 +420,7 @@ impl Engine {
         }
         .unwrap_or(self.cursor.max(self.base));
         self.resync = true;
+        self.fresh_upstream = true;
     }
 
     pub fn is_active(&self) -> bool {
@@ -555,6 +606,9 @@ impl Engine {
 
     /// Move the cursor to key entry `k`, continue the upstream timeline one
     /// frame after the last message sent and queue the codec configuration.
+    /// Script data (`onMetaData`) is re-sent only on a new upstream connection:
+    /// mid-stream, ingests built on libavformat expose it as a new data stream,
+    /// while the audio/video sequence headers are all a decoder needs.
     fn start_at(&mut self, k: u64) {
         self.cursor = k;
         self.reset_headers = true;
@@ -562,7 +616,13 @@ impl Engine {
         let k_ts = self.entry(k).map_or(0, |e| e.ts);
         let next = self.max_out().map_or(k_ts, |m| m + self.frame_ms);
         self.offset = next - k_ts;
-        let configs: Vec<Message> = self.configs.iter().map(|(_, m)| m.clone()).collect();
+        let with_script = std::mem::take(&mut self.fresh_upstream);
+        let configs: Vec<Message> = self
+            .configs
+            .iter()
+            .filter(|(c, _)| with_script || c.0 != msg_type::DATA_AMF0)
+            .map(|(_, m)| m.clone())
+            .collect();
         for mut m in configs {
             m.timestamp = self.stamp(track_of(m.type_id), next);
             self.pending.push_back(m);
@@ -591,6 +651,7 @@ impl Engine {
     fn pop_front(&mut self) {
         if let Some(e) = self.entries.pop_front() {
             self.bytes -= e.msg.payload.len() as u64;
+            self.total.fetch_sub(e.msg.payload.len() as u64, Ordering::Relaxed);
             if self.keys.front() == Some(&self.base) {
                 self.keys.pop_front();
             }
@@ -617,6 +678,7 @@ impl Engine {
         let hard_age = self.retain.max(self.target()) + MAX_GOP;
         while self.entries.front().is_some_and(|e| now.saturating_duration_since(e.at) > hard_age)
             || self.bytes > MAX_BUFFER_BYTES
+            || self.total.load(Ordering::Relaxed) > MAX_TOTAL_BUFFER_BYTES
         {
             let next_key = self.keys.iter().copied().find(|&k| k > self.base).unwrap_or(self.base + 1);
             while self.base < next_key && !self.entries.is_empty() {
@@ -647,7 +709,9 @@ impl Engine {
     fn sustainable_max(&self) -> Option<Duration> {
         let bps = self.bytes_per_sec().filter(|b| *b > 0.0)?;
         // Tiny bitrates give huge (or infinite) values: no practical limit then.
-        let secs = Duration::try_from_secs_f64(MAX_BUFFER_BYTES as f64 / bps).ok()?;
+        let others = self.total.load(Ordering::Relaxed).saturating_sub(self.bytes);
+        let room = MAX_BUFFER_BYTES.min(MAX_TOTAL_BUFFER_BYTES.saturating_sub(others));
+        let secs = Duration::try_from_secs_f64(room as f64 / bps).ok()?;
         Some(secs.saturating_sub(MAX_GOP / 2))
     }
 

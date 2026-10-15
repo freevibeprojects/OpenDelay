@@ -44,6 +44,10 @@ const TYPED_OBJECT: u8 = 0x10;
 const AVMPLUS: u8 = 0x11;
 
 const MAX_DEPTH: usize = 32;
+/// Values one decode may produce. Each decoded value costs ~32–56 bytes of
+/// heap for 1–3 input bytes, so without a budget a 16 MiB message could
+/// expand to over 500 MiB.
+pub const MAX_VALUES: usize = 65_536;
 
 impl Amf0 {
     pub fn str(s: &str) -> Self {
@@ -152,13 +156,22 @@ pub fn encode_all(values: &[Amf0]) -> Vec<u8> {
     out
 }
 
-/// Decode every value in `data`.
+/// Decode every value in `data` (at most [`MAX_VALUES`] values in total,
+/// counting nested ones).
 pub fn decode_all(mut data: &[u8]) -> Result<Vec<Amf0>, Amf0Error> {
+    let mut budget = MAX_VALUES;
     let mut values = Vec::new();
     while !data.is_empty() {
-        values.push(decode_value(&mut data, 0)?);
+        values.push(decode_value(&mut data, 0, &mut budget)?);
     }
     Ok(values)
+}
+
+/// Decode the next value and advance `data` past it (for callers that only
+/// need the leading values, e.g. a script-data name).
+pub fn decode_one(data: &mut &[u8]) -> Result<Amf0, Amf0Error> {
+    let mut budget = MAX_VALUES;
+    decode_value(data, 0, &mut budget)
 }
 
 fn take<'a>(data: &mut &'a [u8], n: usize) -> Result<&'a [u8], Amf0Error> {
@@ -189,7 +202,7 @@ fn read_string(data: &mut &[u8], len: usize) -> Result<String, Amf0Error> {
     Ok(String::from_utf8_lossy(take(data, len)?).into_owned())
 }
 
-fn read_props(data: &mut &[u8], depth: usize) -> Result<Vec<(String, Amf0)>, Amf0Error> {
+fn read_props(data: &mut &[u8], depth: usize, budget: &mut usize) -> Result<Vec<(String, Amf0)>, Amf0Error> {
     let mut props = Vec::new();
     loop {
         let len = read_u16(data)? as usize;
@@ -202,22 +215,23 @@ fn read_props(data: &mut &[u8], depth: usize) -> Result<Vec<(String, Amf0)>, Amf
                 }
                 None => return Ok(props),
                 Some(_) => {
-                    let v = decode_value(data, depth + 1)?;
+                    let v = decode_value(data, depth + 1, budget)?;
                     props.push((String::new(), v));
                     continue;
                 }
             }
         }
         let key = read_string(data, len)?;
-        let v = decode_value(data, depth + 1)?;
+        let v = decode_value(data, depth + 1, budget)?;
         props.push((key, v));
     }
 }
 
-fn decode_value(data: &mut &[u8], depth: usize) -> Result<Amf0, Amf0Error> {
+fn decode_value(data: &mut &[u8], depth: usize, budget: &mut usize) -> Result<Amf0, Amf0Error> {
     if depth > MAX_DEPTH {
         return Err(Amf0Error("nesting too deep"));
     }
+    *budget = budget.checked_sub(1).ok_or(Amf0Error("too many values"))?;
     let marker = take(data, 1)?[0];
     Ok(match marker {
         NUMBER => Amf0::Number(read_f64(data)?),
@@ -230,11 +244,11 @@ fn decode_value(data: &mut &[u8], depth: usize) -> Result<Amf0, Amf0Error> {
             let len = read_u32(data)? as usize;
             Amf0::String(read_string(data, len)?)
         }
-        OBJECT => Amf0::Object(read_props(data, depth)?),
+        OBJECT => Amf0::Object(read_props(data, depth, budget)?),
         TYPED_OBJECT => {
             let len = read_u16(data)? as usize;
             take(data, len)?; // class name, ignored
-            Amf0::Object(read_props(data, depth)?)
+            Amf0::Object(read_props(data, depth, budget)?)
         }
         NULL => Amf0::Null,
         UNDEFINED | UNSUPPORTED => Amf0::Undefined,
@@ -244,13 +258,13 @@ fn decode_value(data: &mut &[u8], depth: usize) -> Result<Amf0, Amf0Error> {
         }
         ECMA_ARRAY => {
             read_u32(data)?; // advisory count, not trusted
-            Amf0::EcmaArray(read_props(data, depth)?)
+            Amf0::EcmaArray(read_props(data, depth, budget)?)
         }
         STRICT_ARRAY => {
             let count = read_u32(data)? as usize;
             let mut items = Vec::with_capacity(count.min(1024));
             for _ in 0..count {
-                items.push(decode_value(data, depth + 1)?);
+                items.push(decode_value(data, depth + 1, budget)?);
             }
             Amf0::StrictArray(items)
         }
@@ -326,6 +340,35 @@ mod tests {
                 (0..(seed % 40)).map(|i| (seed.wrapping_mul(2654435761).wrapping_add(i * 97) >> 7) as u8).collect();
             let _ = decode_all(&bytes);
         }
+    }
+
+    #[test]
+    fn value_budget_stops_amplification() {
+        // A strict array of NULLs: 1 input byte per value.
+        let mut bomb = vec![STRICT_ARRAY];
+        bomb.extend_from_slice(&((MAX_VALUES + 10) as u32).to_be_bytes());
+        bomb.resize(bomb.len() + MAX_VALUES + 10, NULL);
+        assert_eq!(decode_all(&bomb), Err(Amf0Error("too many values")));
+        // Objects of empty-keyed NULLs are counted too.
+        let mut obj = vec![OBJECT];
+        for _ in 0..MAX_VALUES + 1 {
+            obj.extend_from_slice(&[0, 1, b'k', NULL]);
+        }
+        assert_eq!(decode_all(&obj), Err(Amf0Error("too many values")));
+        // Just under the budget is fine.
+        let mut ok = vec![STRICT_ARRAY];
+        ok.extend_from_slice(&((MAX_VALUES - 1) as u32).to_be_bytes());
+        ok.resize(ok.len() + MAX_VALUES - 1, NULL);
+        assert_eq!(decode_all(&ok).map(|v| v.len()), Ok(1));
+    }
+
+    #[test]
+    fn decode_one_advances() {
+        let bytes = encode_all(&[Amf0::str("a"), Amf0::Number(2.0)]);
+        let mut rest = &bytes[..];
+        assert_eq!(decode_one(&mut rest), Ok(Amf0::str("a")));
+        assert_eq!(decode_one(&mut rest), Ok(Amf0::Number(2.0)));
+        assert!(rest.is_empty());
     }
 
     #[test]

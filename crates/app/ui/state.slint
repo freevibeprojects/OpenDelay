@@ -141,6 +141,8 @@ export global AppState {
     callback set-listener-mode(string);
     callback set-twitch-server(string);
     callback refresh-twitch-servers();
+    // the Twitch server list is opened: fetch it once (no request at startup)
+    callback load-twitch-servers();
     // which: enable / golive / overlay / custom; key text + modifiers; "" clears
     callback capture-hotkey(string, string, bool, bool, bool, bool) -> string;
     callback clear-hotkey(string);

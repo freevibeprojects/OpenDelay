@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Styles for the setup page (setup.html). */
+body { background: var(--bg-base); padding: 32px 16px; }
+main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 24px; margin: 0 0 8px; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+p { color: var(--text-secondary); line-height: 1.5; margin: 6px 0; }
+.card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 20px; }
+code { display: block; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--r-md);
+       padding: 10px 12px; font-size: 13px; color: var(--text-primary); user-select: all; margin: 6px 0; }
+.route { margin-top: 10px; }
+.route b { font-size: 13px; }
