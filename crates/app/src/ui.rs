@@ -128,7 +128,7 @@ impl Ui {
         let s = self.state();
         let cfg = self.app.relay.delay_config();
         s.set_state(ss(st.state));
-        let active = st.connected && matches!(st.delay.state, "delayed" | "buffering" | "draining");
+        let active = delay_active(st);
         s.set_delay_active(active);
         if let Some(t) = &self.tray {
             t.set_delay_active(active);
@@ -376,10 +376,20 @@ impl Ui {
     fn show_window(&self) {
         let _ = self.window.show();
         self.window.window().set_minimized(false);
+        self.refresh();
     }
 
-    fn fetch_twitch_servers(self: &Rc<Self>, announce: bool) {
-        let job = self.rt.spawn_blocking(net::twitch_ingests);
+    /// Hidden in the tray: only the tray icon shows the state.
+    fn refresh_tray(&self) {
+        if let Some(t) = &self.tray {
+            t.set_delay_active(delay_active(&self.app.status()));
+        }
+    }
+
+    /// `user`: the refresh button (bypass the cache, report the outcome).
+    fn fetch_twitch_servers(self: &Rc<Self>, user: bool) {
+        let announce = user;
+        let job = self.rt.spawn_blocking(move || net::twitch_ingests(user));
         let ui = self.clone();
         let _ = slint::spawn_local(async move {
             match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
@@ -423,7 +433,7 @@ impl Ui {
         let Some(info) = self.update.borrow().clone() else { return };
         let Some(dir) = self.app.log_dir().and_then(|d| d.parent()).map(|d| d.join("updates")) else { return };
         self.set_update_status("downloading", "");
-        let job = self.rt.spawn_blocking(move || update::download(&info, &dir));
+        let job = self.rt.spawn_blocking(move || update::download(&info, &dir, env!("CARGO_PKG_VERSION")));
         let ui = self.clone();
         let _ = slint::spawn_local(async move {
             match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
@@ -541,9 +551,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }
     ui.refresh();
     ui.refresh_logs();
-    if settings.routes.iter().any(|r| r.preset == "twitch") {
-        ui.fetch_twitch_servers(false);
-    }
     if settings.update_check {
         ui.check_update();
     }
@@ -669,6 +676,9 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }));
     s.on_finish_onboarding(with_ui!(|u, preset, server| u.finish_onboarding(&preset, &server)));
     s.on_refresh_twitch_servers(with_ui!(|u| u.fetch_twitch_servers(true)));
+    s.on_load_twitch_servers(with_ui!(|u| if u.twitch.borrow().is_empty() {
+        u.fetch_twitch_servers(false)
+    }));
     s.on_check_update(with_ui!(|u| u.check_update()));
     s.on_download_update(with_ui!(|u| u.download_update()));
     s.on_capture_hotkey(with_ui!(|u, which, text, ctrl, alt, shift, meta| {
@@ -725,6 +735,10 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     Ok(ui)
 }
 
+fn delay_active(st: &Status) -> bool {
+    st.connected && matches!(st.delay.state, "delayed" | "buffering" | "draining")
+}
+
 impl Ui {
     pub fn window(&self) -> &MainWindow {
         &self.window
@@ -750,6 +764,13 @@ impl Ui {
                 u.on_hotkey(which);
             }
             let now = Instant::now();
+            if !u.window.window().is_visible() {
+                if now.duration_since(last.get()) >= Duration::from_secs(1) {
+                    last.set(now);
+                    u.refresh_tray();
+                }
+                return;
+            }
             let state = u.state().get_state();
             let busy = now < u.fast_until.get() || state == "buffering" || state == "draining";
             if busy || now.duration_since(last.get()) >= Duration::from_secs(1) {

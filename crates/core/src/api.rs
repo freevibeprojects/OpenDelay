@@ -62,9 +62,10 @@ pub(crate) async fn serve(app: Arc<App>, addr: SocketAddr) -> std::io::Result<So
 fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/", get(|| async { Redirect::temporary("/dock") }))
-        .route("/dock", get(|State(app): AppState| async move { page(&app, DOCK) }))
-        .route("/overlay", get(|State(app): AppState| async move { page(&app, OVERLAY) }))
-        .route("/setup", get(|State(app): AppState| async move { page(&app, SETUP) }))
+        // Only the dock sends commands; the read-only pages get no token.
+        .route("/dock", get(|State(app): AppState| async move { page(DOCK.replace("{{TOKEN}}", app.token())) }))
+        .route("/overlay", get(|| async { page(OVERLAY.into()) }))
+        .route("/setup", get(|| async { page(SETUP.into()) }))
         .route("/assets/{file}", get(asset))
         .route("/assets/lang/{file}", get(lang))
         .route("/api/status", get(|State(app): AppState| async move { Json(app.reply(Ok(String::new()))) }))
@@ -141,16 +142,20 @@ async fn guard(State(app): AppState, req: Request, next: Next) -> Response {
     }
 }
 
-fn page(app: &App, html: &str) -> Response {
-    let body = html.replace("{{TOKEN}}", app.token()).replace("{{VERSION}}", env!("CARGO_PKG_VERSION"));
+fn page(html: String) -> Response {
     (
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),
             (header::CACHE_CONTROL, "no-store"),
             (header::X_FRAME_OPTIONS, "DENY"),
-            (header::CONTENT_SECURITY_POLICY, "frame-ancestors 'none'"),
+            // No inline scripts or styles: everything comes from /assets.
+            (
+                header::CONTENT_SECURITY_POLICY,
+                "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            ),
+            (header::REFERRER_POLICY, "no-referrer"),
         ],
-        body,
+        html,
     )
         .into_response()
 }
@@ -159,6 +164,12 @@ async fn asset(Path(file): Path<String>) -> Response {
     let (ctype, body): (&str, &'static [u8]) = match file.as_str() {
         "style.css" => ("text/css; charset=utf-8", include_bytes!("../web/style.css")),
         "common.js" => ("text/javascript; charset=utf-8", include_bytes!("../web/common.js")),
+        "dock.css" => ("text/css; charset=utf-8", include_bytes!("../web/dock.css")),
+        "dock.js" => ("text/javascript; charset=utf-8", include_bytes!("../web/dock.js")),
+        "overlay.css" => ("text/css; charset=utf-8", include_bytes!("../web/overlay.css")),
+        "overlay.js" => ("text/javascript; charset=utf-8", include_bytes!("../web/overlay.js")),
+        "setup.css" => ("text/css; charset=utf-8", include_bytes!("../web/setup.css")),
+        "setup.js" => ("text/javascript; charset=utf-8", include_bytes!("../web/setup.js")),
         "inter-400.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-Regular.woff2")),
         "inter-600.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-SemiBold.woff2")),
         "inter-700.woff2" => ("font/woff2", include_bytes!("../../../assets/fonts/web/Inter-Bold.woff2")),
@@ -258,7 +269,7 @@ async fn twitch_set(State(app): AppState, body: Bytes) -> Response {
 }
 
 async fn twitch_servers(State(app): AppState) -> Response {
-    let r = tokio::task::spawn_blocking(crate::net::twitch_ingests).await;
+    let r = tokio::task::spawn_blocking(|| crate::net::twitch_ingests(false)).await;
     match r.map_err(|e| e.to_string()).and_then(|r| r) {
         Ok(list) => respond(&app, Ok(String::new()), json!(list)),
         Err(e) => respond(&app, Err(Problem::new("network", e)), Value::Null),
@@ -266,6 +277,11 @@ async fn twitch_servers(State(app): AppState) -> Response {
 }
 
 async fn update_check(State(app): AppState) -> Response {
+    // Opt-in (SPEC §11): no request to the feed unless the user turned it on.
+    if !app.settings().update_check {
+        let p = Problem::new("update_check_off", "Update checks are turned off in OpenDelay's settings.");
+        return respond(&app, Err(p), Value::Null);
+    }
     let r = tokio::task::spawn_blocking(|| crate::update::check(env!("CARGO_PKG_VERSION"))).await;
     match r.map_err(|e| e.to_string()).and_then(|r| r) {
         Ok(info) => respond(&app, Ok(String::new()), json!({ "available": info.is_some(), "update": info })),

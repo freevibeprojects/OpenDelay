@@ -5,7 +5,7 @@
 
 use crate::conn::{self, BoxIo, MsgReader, MsgWriter, OUT_CHUNK_SIZE};
 use crate::diag::SessionLog;
-use crate::engine::{Engine, Poll};
+use crate::engine::{Engine, Parsed, Poll};
 use crate::health::{self, HealthAnalyzer, HealthReport};
 use crate::relay::Shared;
 use crate::routes::{Route, normalize_path};
@@ -15,17 +15,20 @@ use opendelay_rtmp::amf0::Amf0;
 use opendelay_rtmp::message::{split_aggregate, status_object, user_control};
 use opendelay_rtmp::{Command, Message, msg_type};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::net::TcpStream;
 use tokio::sync::Notify;
-use tokio::time::{sleep, sleep_until, timeout};
+use tokio::time::{sleep, sleep_until, timeout, timeout_at};
 use tokio_rustls::rustls::ClientConfig;
 use tokio_util::sync::CancellationToken;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
-const NEGOTIATE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Largest message accepted before `publish`: real `connect`/`publish`
+/// commands are a few hundred bytes, and anything larger costs memory before
+/// the peer has proven anything (AMF0 decoding expands its input).
+const PRE_PUBLISH_MAX_MESSAGE: u32 = 64 * 1024;
 /// An encoder that sends nothing for this long is gone (or hostile).
 const ENCODER_IDLE: Duration = Duration::from_secs(20);
 /// Writing upstream that makes no progress for this long means the
@@ -69,6 +72,8 @@ pub struct Session {
     /// (sample time, bytes in at that time, last computed kbit/s)
     meter: Mutex<(Instant, u64, u64)>,
     health: Mutex<Health>,
+    /// Set (under the relay's session lock) when this session takes its route at `publish`.
+    claimed: AtomicBool,
 }
 
 struct Health {
@@ -98,6 +103,14 @@ impl Session {
             SessionInfo { phase, recovery_attempt: attempt, last_error };
     }
 
+    pub fn is_claimed(&self) -> bool {
+        self.claimed.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn claim(&self) {
+        self.claimed.store(true, Ordering::SeqCst);
+    }
+
     /// Incoming bitrate, averaged over at least one second.
     pub fn bitrate_kbps(&self) -> u64 {
         let mut m = self.meter.lock().unwrap_or_else(|e| e.into_inner());
@@ -115,9 +128,10 @@ impl Session {
 
     fn push(&self, msg: Message) {
         let now = Instant::now();
+        let parsed = Parsed::of(&msg); // once for both the health checks and the engine
         {
             let mut h = self.health.lock().unwrap_or_else(|e| e.into_inner());
-            h.analyzer.observe(&msg, now);
+            h.analyzer.observe_parsed(&msg, &parsed, now);
             if now.duration_since(h.last_check) >= Duration::from_secs(5) {
                 h.last_check = now;
                 for f in h.analyzer.report(now).findings {
@@ -128,7 +142,7 @@ impl Session {
                 }
             }
         }
-        self.engine().push(msg, now);
+        self.engine().push_parsed(msg, &parsed, now);
         self.wake();
     }
 }
@@ -159,8 +173,11 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     if !matches!(timeout(HANDSHAKE_TIMEOUT, conn::server_handshake(&mut io, uptime)).await, Ok(Ok(()))) {
         return;
     }
+    // One deadline covers everything from accepting to `publish`.
+    let deadline = tokio::time::Instant::now() + relay.negotiate_timeout;
     let (mut er, mut ew) = conn::split(io);
-    let Ok(Some(connect)) = timeout(NEGOTIATE_TIMEOUT, read_connect(&mut er, &mut ew)).await else { return };
+    er.set_max_message_size(PRE_PUBLISH_MAX_MESSAGE);
+    let Ok(Some(connect)) = timeout_at(deadline, read_connect(&mut er, &mut ew)).await else { return };
     let app = connect.object.get("app").and_then(Amf0::as_str).unwrap_or("");
     let route = match relay.route_for(&normalize_path(app)) {
         Ok(r) => r,
@@ -207,10 +224,16 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
             last_check: Instant::now(),
             logged: Vec::new(),
         }),
+        claimed: AtomicBool::new(false),
     });
-    relay.add_session(sess.clone());
+    if let Err(reason) = relay.add_session(sess.clone()) {
+        let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
+        sess.log.event(format!("Refused: {reason}"));
+        sess.log.finish();
+        return;
+    }
     sess.log.event(format!("Encoder connected from {peer}"));
-    let result = serve(&sess, &relay.tls, er, ew, connect).await;
+    let result = serve(&sess, &relay, er, ew, connect, deadline).await;
     match result {
         Ok(()) => sess.log.event("Session ended"),
         Err(e) => sess.log.event(format!("Session ended: {e}")),
@@ -238,11 +261,13 @@ async fn read_connect(er: &mut MsgReader, ew: &mut MsgWriter) -> Option<Command>
 
 async fn serve(
     sess: &Arc<Session>,
-    tls: &Arc<ClientConfig>,
+    relay: &Shared,
     mut er: MsgReader,
     mut ew: MsgWriter,
     connect: Command,
+    deadline: tokio::time::Instant,
 ) -> Res<()> {
+    let tls = &relay.tls;
     ew.queue(&Message::window_ack_size(2_500_000));
     ew.queue(&Message::set_peer_bandwidth(2_500_000, 2));
     ew.queue_chunk_size(OUT_CHUNK_SIZE);
@@ -272,13 +297,19 @@ async fn serve(
         }
     };
     // Relay the platform's answer so the encoder sees a normal session.
-    ew.send(&reply("_result", connect.transaction_id, result.object, result.args)).await.map_err(io_err)?;
+    // Writes before `publish` share its deadline too (a peer that never reads
+    // would otherwise stall them).
+    let late = |_| "encoder did not publish in time".to_owned();
+    timeout_at(deadline, ew.send(&reply("_result", connect.transaction_id, result.object, result.args)))
+        .await
+        .map_err(late)?
+        .map_err(io_err)?;
 
     // Answer the stream setup locally until `publish` carries the stream key.
     let key = loop {
         let msg = tokio::select! {
-            r = timeout(ENCODER_IDLE, er.read()) => r
-                .map_err(|_| "encoder sent nothing before publishing")?
+            r = timeout_at(deadline, er.read()) => r
+                .map_err(late)?
                 .map_err(io_err)?
                 .ok_or("encoder disconnected before publishing")?,
             _ = sess.token.cancelled() => return Err("stopped".into()),
@@ -312,9 +343,16 @@ async fn serve(
                 _ => {}
             }
         }
-        ew.flush().await.map_err(io_err)?;
+        timeout_at(deadline, ew.flush()).await.map_err(late)?.map_err(io_err)?;
     };
 
+    // Take the route only now: a peer that never publishes blocks no one, and
+    // an emergency stop pressed meanwhile still wins.
+    if let Err(reason) = relay.claim_route(sess) {
+        let status = status_object("error", "NetStream.Publish.Denied", &reason);
+        let _ = ew.send(&Command::new("onStatus", 0.0, Amf0::Null, vec![status]).to_message(ENCODER_STREAM_ID)).await;
+        return Err(reason);
+    }
     let published = tokio::select! {
         r = up.publish(&key) => r,
         _ = sess.token.cancelled() => return Err("stopped".into()),
@@ -339,6 +377,7 @@ async fn serve(
     }
     sess.set_info(Phase::Live, 0, None);
     sess.log.event("Publishing; relay is live");
+    er.set_max_message_size(u32::MAX); // media: keyframes can be several MiB
 
     let upstream_task = tokio::spawn(upstream_loop(sess.clone(), tls.clone(), up, url, connect_obj, key));
     let ended = encoder_loop(sess, &mut er, &mut ew).await;
@@ -551,4 +590,29 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
         r = write => r,
         _ = sess.token.cancelled() => Err(UpstreamError::Protocol("stopped".into())),
     }
+}
+
+#[cfg(test)]
+pub(crate) fn test_session(id: u64, path: &str, ip: [u8; 4]) -> Arc<Session> {
+    Arc::new(Session {
+        id,
+        route: Route { id: path.into(), name: path.into(), path: path.into(), ..Default::default() },
+        peer: SocketAddr::from((ip, 1000)),
+        started: Instant::now(),
+        started_at: SystemTime::now(),
+        engine: Mutex::new(Engine::default()),
+        notify: Notify::new(),
+        token: CancellationToken::new(),
+        info: Mutex::new(SessionInfo { phase: Phase::Connecting, recovery_attempt: 0, last_error: None }),
+        bytes_in: AtomicU64::new(0),
+        bytes_out: AtomicU64::new(0),
+        log: SessionLog::create(None, id, &[]),
+        meter: Mutex::new((Instant::now(), 0, 0)),
+        health: Mutex::new(Health {
+            analyzer: HealthAnalyzer::new(None, Instant::now()),
+            last_check: Instant::now(),
+            logged: Vec::new(),
+        }),
+        claimed: AtomicBool::new(false),
+    })
 }

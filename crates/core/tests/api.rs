@@ -85,8 +85,17 @@ async fn status_and_pages_are_served_with_the_token() {
 
     let r = http(&s, "GET", "/dock", &[("Sec-Fetch-Site", "none")], "").await;
     assert_eq!(r.code, 200);
-    assert!(r.body.contains(s.app.token()), "token embedded in same-origin pages");
-    assert!(r.head.to_ascii_lowercase().contains("x-frame-options: deny"), "pages cannot be framed");
+    assert!(r.body.contains(s.app.token()), "token embedded in the dock");
+    let head = r.head.to_ascii_lowercase();
+    assert!(head.contains("x-frame-options: deny"), "pages cannot be framed");
+    assert!(
+        head.contains("content-security-policy: default-src 'self'") && head.contains("referrer-policy: no-referrer")
+    );
+    for page in ["/overlay", "/setup"] {
+        let r = http(&s, "GET", page, &[], "").await;
+        assert!(!r.body.contains(s.app.token()), "read-only page {page} carries no token");
+        assert!(!r.body.contains("<script>") && !r.body.contains("<style>"), "no inline code in {page}");
+    }
     assert_eq!(http(&s, "GET", "/nope", &[], "").await.code, 404);
 }
 
@@ -283,6 +292,11 @@ async fn web_assets_and_translations() {
         let r = http(&s, "GET", page, &[], "").await;
         assert_eq!(r.code, 200, "{page}");
         assert!(r.body.contains("/assets/common.js"));
+        let name = &page[1..];
+        for asset in [format!("/assets/{name}.js"), format!("/assets/{name}.css")] {
+            assert!(r.body.contains(&asset), "{page} links {asset}");
+            assert_eq!(http(&s, "GET", &asset, &[], "").await.code, 200, "{asset}");
+        }
     }
     let r = http(&s, "GET", "/assets/lang/en.json", &[], "").await;
     assert_eq!(r.code, 200);
@@ -291,6 +305,14 @@ async fn web_assets_and_translations() {
     assert_eq!(http(&s, "GET", "/assets/lang/..%2Fdock.html", &[], "").await.code, 404);
     let font = http(&s, "GET", "/assets/inter-400.woff2", &[], "").await;
     assert!(font.code == 200 && font.head.to_ascii_lowercase().contains("font/woff2"));
+}
+
+#[tokio::test]
+async fn update_check_is_opt_in() {
+    let s = start().await;
+    assert!(!s.app.settings().update_check, "off by default");
+    let v = http(&s, "GET", "/api/update", &[], "").await.json();
+    assert_eq!((v["success"].as_bool(), v["code"].as_str()), (Some(false), Some("update_check_off")), "{v}");
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@
 //! Per-session plain-text diagnostic logs (SPEC §9).
 
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -35,16 +35,31 @@ pub fn iso_utc(t: SystemTime) -> String {
     format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
 }
 
-/// Owner-only permissions on Unix (settings and logs are personal data).
-pub fn make_private(path: &Path) {
+/// Create `dir` (and parents) with owner-only permissions on Unix, and
+/// tighten an existing one (settings and logs are personal data).
+pub fn private_dir(dir: &Path) -> io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = if path.is_dir() { 0o700 } else { 0o600 };
-        let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode));
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        builder.mode(0o700).create(dir)?;
+        if dir.as_os_str().is_empty() {
+            return Ok(());
+        }
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
     }
     #[cfg(not(unix))]
-    let _ = path;
+    builder.create(dir)
+}
+
+/// Create (or truncate) a file that is owner-only from the start on Unix.
+pub fn create_private(path: &Path) -> io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 /// Random-enough short id (not security relevant).
@@ -67,13 +82,11 @@ impl SessionLog {
     pub fn create(dir: Option<&Path>, connection_id: u64, header: &[(&str, String)]) -> SessionLog {
         let now = SystemTime::now();
         let file = dir.and_then(|dir| {
-            fs::create_dir_all(dir).ok()?;
-            make_private(dir);
+            private_dir(dir).ok()?;
             rotate(dir, MAX_LOGS - 1);
             let (y, mo, d, h, mi, s) = utc(now);
             let path = dir.join(format!("{y:04}{mo:02}{d:02}-{h:02}{mi:02}{s:02}-{connection_id}.log"));
-            let mut f = File::create(&path).ok()?;
-            make_private(&path);
+            let mut f = create_private(&path).ok()?;
             let mut text = format!("OpenDelay session log\nStart: {}\nConnection: {connection_id}\n", iso_utc(now));
             for (k, v) in header {
                 text.push_str(&format!("{k}: {v}\n"));

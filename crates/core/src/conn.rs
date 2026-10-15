@@ -81,6 +81,11 @@ impl MsgReader {
     pub fn bytes_received(&self) -> u64 {
         self.chunks.bytes_received()
     }
+
+    /// See [`ChunkReader::set_max_message_size`].
+    pub fn set_max_message_size(&mut self, bytes: u32) {
+        self.chunks.set_max_message_size(bytes);
+    }
 }
 
 pub struct MsgWriter {

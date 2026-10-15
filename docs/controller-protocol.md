@@ -196,9 +196,11 @@ The same actions are available over HTTP for scripts and the OBS dock:
 - `POST /api/action` with a request body like the WebSocket request above.
 - `GET /api/routes`, `POST /api/routes`, `PUT|DELETE /api/routes/{id}` — routes.
 - `GET|PUT /api/network` (`{"listenerMode": "local"|"lan"}`), `GET|PUT
-  /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`.
+  /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`
+  (Twitch's ingest list, cached for 10 minutes).
 - `GET /api/diagnostics`, `GET /api/diagnostics/{id}` — session logs.
-- `GET /api/update` — release feed check (never downloads).
+- `GET /api/update` — release feed check (never downloads). Refused with
+  code `update_check_off` unless "Check for updates" is on.
 - `POST /api/window/show` — bring the desktop window forward (used when
   OpenDelay is started a second time).
 

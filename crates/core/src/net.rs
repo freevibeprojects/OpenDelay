@@ -16,11 +16,8 @@ pub const TWITCH_INGESTS_URL: &str = "https://ingest.twitch.tv/ingests";
 fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
-        let roots: Vec<Certificate<'static>> = rustls_native_certs::load_native_certs()
-            .certs
-            .iter()
-            .map(|c| Certificate::from_der(c.as_ref()).to_owned())
-            .collect();
+        let roots: Vec<Certificate<'static>> =
+            crate::upstream::native_roots().iter().map(|c| Certificate::from_der(c.as_ref()).to_owned()).collect();
         let config = ureq::Agent::config_builder()
             .https_only(true)
             .timeout_global(Some(Duration::from_secs(30)))
@@ -76,8 +73,33 @@ pub fn parse_twitch_ingests(json: &[u8]) -> Result<Vec<TwitchIngest>, String> {
         .collect())
 }
 
-pub fn twitch_ingests() -> Result<Vec<TwitchIngest>, String> {
-    parse_twitch_ingests(&get(TWITCH_INGESTS_URL, 1 << 20)?)
+/// GET `url` as a stream of at most `limit` bytes (for large downloads,
+/// which get a generous time limit).
+pub fn get_reader(url: &str, limit: u64) -> Result<impl std::io::Read, String> {
+    let response = agent()
+        .get(url)
+        .config()
+        .timeout_global(Some(Duration::from_secs(1800)))
+        .build()
+        .call()
+        .map_err(|e| e.to_string())?;
+    Ok(response.into_body().into_with_config().limit(limit).reader())
+}
+
+/// Twitch's ingest list, fetched at most once per 10 minutes unless `fresh`.
+pub fn twitch_ingests(fresh: bool) -> Result<Vec<TwitchIngest>, String> {
+    use std::sync::Mutex;
+    use std::time::Instant;
+    static CACHE: Mutex<Option<(Instant, Vec<TwitchIngest>)>> = Mutex::new(None);
+    if !fresh
+        && let Some((at, list)) = &*CACHE.lock().unwrap_or_else(|e| e.into_inner())
+        && at.elapsed() < Duration::from_secs(600)
+    {
+        return Ok(list.clone());
+    }
+    let list = parse_twitch_ingests(&get(TWITCH_INGESTS_URL, 1 << 20)?)?;
+    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), list.clone()));
+    Ok(list)
 }
 
 #[cfg(test)]

@@ -5,35 +5,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="opendelay-token" content="{{TOKEN}}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenDelay overlay</title>
 <link rel="stylesheet" href="/assets/style.css">
-<style>
-  html, body { background: transparent; overflow: hidden; }
-  body.preview { background: linear-gradient(135deg, #1f2937 0%, #312e81 55%, #0f172a 100%); min-height: 100vh; }
-  #wrap { padding: 16px; transform-origin: top left; }
-  .badge {
-    --tone: #a48ffb;
-    position: relative; overflow: hidden;
-    display: inline-flex; align-items: center; gap: 12px;
-    height: 52px; padding: 0 20px 0 8px; border-radius: 26px;
-    background: rgba(10, 10, 13, 0.85);
-    border: 1.5px solid color-mix(in srgb, var(--tone) 60%, transparent);
-    box-shadow: 0 0 20px color-mix(in srgb, var(--tone) 30%, transparent);
-    transition: opacity 300ms ease, transform 300ms ease;
-  }
-  .badge.hidden { opacity: 0; transform: translateY(-8px); }
-  .icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
-          background: color-mix(in srgb, var(--tone) 20%, transparent); }
-  .icon svg.off { display: none; }
-  .icon svg { width: 20px; height: 20px; fill: none; stroke: var(--tone); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .label { font-weight: 700; font-size: 15px; letter-spacing: 0.02em; }
-  .value { font-weight: 700; font-size: 15px; color: var(--tone); }
-  .value:empty { display: none; }
-  .progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--tone); transition: width 240ms ease-out; }
-  @media (prefers-reduced-motion: reduce) { .badge, .progress { transition: none; } }
-</style>
+<link rel="stylesheet" href="/assets/overlay.css">
 </head>
 <body>
 <div id="wrap">
@@ -48,36 +23,6 @@
   </div>
 </div>
 <script src="/assets/common.js"></script>
-<script>
-"use strict";
-const PALETTE = {
-  red: "#ef4444", orange: "#f97316", yellow: "#facc15", lime: "#84cc16", green: "#22c55e", teal: "#14b8a6",
-  cyan: "#22d3ee", blue: "#3b82f6", indigo: "#6366f1", violet: "#a48ffb", pink: "#ec4899", white: "#f4f4f6",
-};
-const $ = (id) => document.getElementById(id);
-const preview = OD.params.get("preview") === "1";
-const scale = Math.min(4, Math.max(0.25, parseFloat(OD.params.get("scale")) || 1));
-$("wrap").style.transform = `scale(${scale})`;
-document.body.classList.toggle("preview", preview);
-
-function render(st) {
-  const badge = $("badge");
-  if (!st) { badge.classList.add("hidden"); return; }
-  const tone = PALETTE[OD.params.get("color")] || PALETTE[st.overlayColor] || PALETTE.violet;
-  badge.style.setProperty("--tone", tone);
-  const d = st.delay;
-  const delayed = st.connected && ["delayed", "buffering", "draining"].includes(d.state);
-  $("icon-delay").classList.toggle("off", !delayed);
-  $("icon-live").classList.toggle("off", delayed);
-  $("label").textContent = d.state === "draining" ? OD.t("badge_going_live") : delayed ? OD.t("badge_delay") : OD.t("badge_live");
-  const seconds = d.state === "buffering" ? d.targetMs / 1000 : d.currentMs / 1000;
-  $("value").textContent = delayed && d.state !== "draining" ? OD.duration(Math.ceil(seconds)) : "";
-  $("progress").style.width = d.progress == null ? "0" : `${Math.round(d.progress * 100)}%`;
-  const show = preview || (st.overlayVisible && st.connected);
-  badge.classList.toggle("hidden", !show);
-}
-
-OD.loadLanguage().then(() => OD.poll((st) => render(st)));
-</script>
+<script src="/assets/overlay.js"></script>
 </body>
 </html>

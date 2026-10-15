@@ -49,6 +49,7 @@ pub struct ChunkReader {
     chunk_size: u32,
     streams: HashMap<u32, InStream>,
     received: u64,
+    max_message: u32,
 }
 
 impl Default for ChunkReader {
@@ -67,7 +68,13 @@ fn u32be(b: &[u8]) -> u32 {
 
 impl ChunkReader {
     pub fn new() -> Self {
-        ChunkReader { buf: BytesMut::new(), chunk_size: DEFAULT_CHUNK_SIZE, streams: HashMap::new(), received: 0 }
+        ChunkReader {
+            buf: BytesMut::new(),
+            chunk_size: DEFAULT_CHUNK_SIZE,
+            streams: HashMap::new(),
+            received: 0,
+            max_message: MAX_CHUNK_SIZE,
+        }
     }
 
     pub fn feed(&mut self, data: &[u8]) {
@@ -82,6 +89,12 @@ impl ChunkReader {
 
     pub fn chunk_size(&self) -> u32 {
         self.chunk_size
+    }
+
+    /// Refuse messages longer than `bytes` (an error, before any payload is
+    /// buffered). Default: the protocol maximum of 2^24-1.
+    pub fn set_max_message_size(&mut self, bytes: u32) {
+        self.max_message = bytes.min(MAX_CHUNK_SIZE);
     }
 
     /// Next complete message, or `Ok(None)` when more input is needed.
@@ -169,6 +182,9 @@ impl ChunkReader {
         // fmt 0/1/2 always start a new message (dropping any unfinished one);
         // fmt 3 continues the pending message or starts one with the previous delta.
         let starts = fmt < 3 || st.partial.is_none();
+        if starts && length > self.max_message {
+            return Err(ChunkError("message too large"));
+        }
         let have = if starts { 0 } else { st.partial.as_ref().map_or(0, Vec::len) as u32 };
         let n = (length - have).min(self.chunk_size) as usize;
         if b.len() < p + n {
@@ -260,7 +276,13 @@ impl ChunkWriter {
     }
 
     /// Append `msg` as chunks on chunk stream `csid` (2..=65599).
+    ///
+    /// # Panics
+    /// If `csid` is outside 2..=65599 or the payload is longer than 2^24-1
+    /// bytes (neither can be encoded).
     pub fn write(&mut self, out: &mut Vec<u8>, csid: u32, msg: &Message) {
+        assert!((2..=65_599).contains(&csid), "chunk stream id {csid} cannot be encoded");
+        assert!(msg.payload.len() <= MAX_CHUNK_SIZE as usize, "message longer than 2^24-1 bytes");
         let len = msg.payload.len() as u32;
         let (fmt, field) = match self.last.get(&csid) {
             Some(prev) if prev.stream_id == msg.stream_id && msg.timestamp >= prev.timestamp => {
@@ -441,6 +463,27 @@ mod tests {
         let got = read_all(&mut r);
         assert_eq!(got[0].timestamp, 0x0100_0000);
         assert_eq!(got[0].payload.len(), 130);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot be encoded")]
+    fn reserved_chunk_stream_ids_are_refused() {
+        ChunkWriter::new().write(&mut Vec::new(), 1, &msg(msg_type::AUDIO, 0, 0, 1, 1));
+    }
+
+    #[test]
+    fn max_message_size() {
+        let mut w = ChunkWriter::new();
+        let mut out = Vec::new();
+        w.write(&mut out, 3, &msg(msg_type::COMMAND_AMF0, 0, 0, 2000, 1));
+        let mut r = ChunkReader::new();
+        r.set_max_message_size(1000);
+        r.feed(&out[..20]); // header only: refused before buffering the payload
+        assert_eq!(r.next_message(), Err(ChunkError("message too large")));
+        let mut r = ChunkReader::new();
+        r.set_max_message_size(4000);
+        r.feed(&out);
+        assert_eq!(r.next_message().unwrap().unwrap().payload.len(), 2000);
     }
 
     #[test]

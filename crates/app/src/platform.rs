@@ -9,8 +9,10 @@ pub fn open(target: &str) {
     let result = Command::new("explorer.exe").arg(target).spawn();
     #[cfg(not(windows))]
     let result = Command::new("xdg-open").arg(target).spawn();
-    if let Err(e) = result {
-        eprintln!("could not open {target}: {e}");
+    match result {
+        // Wait for the launcher so it does not stay a zombie (it exits quickly).
+        Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
+        Err(e) => eprintln!("could not open {target}: {e}"),
     }
 }
 

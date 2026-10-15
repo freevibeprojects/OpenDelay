@@ -162,6 +162,10 @@ pub struct App {
     pub relay: Relay,
     settings: Mutex<Settings>,
     settings_path: Option<PathBuf>,
+    /// Serializes writes of the settings file (each writes the latest state).
+    save_lock: Mutex<()>,
+    /// Wakes the background settings writer.
+    save_soon: std::sync::mpsc::Sender<()>,
     log_dir: Option<PathBuf>,
     overlay_visible: AtomicBool,
     /// Set by a second launch asking this instance to show its window.
@@ -254,13 +258,16 @@ impl App {
         let log_dir = opts.data_dir.map(|d| d.join("logs"));
         let relay = Relay::new(
             effective_routes(&s),
-            RelayOptions { delay: delay_config(&s), log_dir: log_dir.clone(), tls: opts.tls },
+            RelayOptions { delay: delay_config(&s), log_dir: log_dir.clone(), tls: opts.tls, ..Default::default() },
         );
-        Arc::new(App {
+        let (save_soon, save_requests) = std::sync::mpsc::channel::<()>();
+        let app = Arc::new(App {
             relay,
             active_listener: s.listener_mode,
             settings: Mutex::new(s),
             settings_path,
+            save_lock: Mutex::new(()),
+            save_soon,
             log_dir,
             overlay_visible: AtomicBool::new(true),
             show_requested: AtomicBool::new(false),
@@ -269,7 +276,27 @@ impl App {
             rtmp_port: AtomicU16::new(RTMP_PORT),
             http_port: AtomicU16::new(HTTP_PORT),
             changed: watch::Sender::new(0),
-        })
+        });
+        // Delay actions (UI thread, hotkeys, HTTP workers) must not wait for
+        // the disk: their settings are written here, coalesced.
+        let weak = Arc::downgrade(&app);
+        std::thread::spawn(move || {
+            while save_requests.recv().is_ok() {
+                while save_requests.try_recv().is_ok() {}
+                let Some(app) = weak.upgrade() else { break };
+                if let Err(e) = app.save_settings() {
+                    eprintln!("could not save settings: {e}");
+                }
+            }
+        });
+        app
+    }
+
+    /// Write the current settings (not under the settings lock).
+    fn save_settings(&self) -> std::io::Result<()> {
+        let Some(path) = &self.settings_path else { return Ok(()) };
+        let _writing = self.save_lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.settings().save(path)
     }
 
     fn lan_addresses(&self) -> Vec<String> {
@@ -343,13 +370,17 @@ impl App {
     }
 
     /// Edit settings atomically; persists and notifies on success.
+    /// Change the settings and save them; a failed save is reported (the
+    /// change still applies to this run).
     pub fn update_settings(&self, f: impl FnOnce(&mut Settings) -> Result<(), Problem>) -> Result<(), Problem> {
+        self.change_settings(f)?;
+        self.save_settings().map_err(|e| Problem::new("save_failed", format!("Could not save settings: {e}")))
+    }
+
+    fn change_settings(&self, f: impl FnOnce(&mut Settings) -> Result<(), Problem>) -> Result<(), Problem> {
         let mut guard = self.settings.lock().unwrap_or_else(|e| e.into_inner());
         let mut next = guard.clone();
         f(&mut next)?;
-        if let Some(path) = &self.settings_path {
-            next.save(path).map_err(|e| Problem::new("save_failed", format!("Could not save settings: {e}")))?;
-        }
         self.relay.set_routes(effective_routes(&next));
         *guard = next;
         drop(guard);
@@ -405,12 +436,13 @@ impl App {
         let s = self.settings();
         let (buffer, delay) = (cfg.buffer.as_secs() as u32, cfg.delay.as_secs() as u32);
         if (s.delay_mode_enabled, s.default_buffer_secs, s.delay_secs) != (cfg.mode_enabled, buffer, delay) {
-            let _ = self.update_settings(|s| {
+            let _ = self.change_settings(|s| {
                 s.delay_mode_enabled = cfg.mode_enabled;
                 s.default_buffer_secs = buffer;
                 s.delay_secs = delay;
                 Ok(())
             });
+            let _ = self.save_soon.send(());
         }
     }
 
@@ -616,6 +648,7 @@ impl App {
     /// Stop accepting encoders and wait (bounded) for streams to end.
     pub async fn shutdown(&self) {
         self.relay.shutdown(SHUTDOWN_WAIT).await;
+        let _ = self.save_settings(); // whatever the background writer has not written yet
     }
 }
 

@@ -18,7 +18,7 @@ component HotkeyRow {
             alignment: center;
             spacing: 2px;
             horizontal-stretch: 1;
-            Text { text: root.title; color: Theme.text-primary; font-size: 14px; font-weight: 500; }
+            Text { text: root.title; color: Theme.text-primary; font-size: 14px; font-weight: 600; }
             if root.description != "": Body { text: root.description; font-size: 12px; }
         }
         VerticalLayout {
@@ -34,7 +34,7 @@ component HotkeyRow {
                     text: root.capturing ? @tr("Press a key combination…") : root.value == "" ? @tr("Not set") : root.value;
                     color: root.value == "" && !root.capturing ? Theme.text-secondary : Theme.text-primary;
                     font-size: 13px;
-                    font-weight: 500;
+                    font-weight: 600;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }

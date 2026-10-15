@@ -105,12 +105,13 @@ fn ac2_enable_30s_with_full_60s_buffer_is_instant_and_seamless() {
     assert_eq!(sim.e.enable(Duration::from_secs(30), sim.at()), Ok(Enabled::Instant));
     sim.secs(100.0);
 
-    // Codec configuration is re-sent first, then a keyframe from ~30 s earlier.
+    // Sequence headers are re-sent first (script data only on reconnects),
+    // then a keyframe from ~30 s earlier.
     let after = sim.sent_after(t);
-    assert_eq!(after[0].1.type_id, msg_type::DATA_AMF0);
-    assert_eq!(&after[1].1.payload[..2], &[0x17, 0]);
-    assert_eq!(&after[2].1.payload[..2], &[0xAF, 0]);
-    let key = &after[3].1;
+    assert_eq!(&after[0].1.payload[..2], &[0x17, 0]);
+    assert_eq!(&after[1].1.payload[..2], &[0xAF, 0]);
+    assert!(after.iter().all(|(_, m)| m.type_id != msg_type::DATA_AMF0), "no onMetaData mid-stream");
+    let key = &after[2].1;
     assert!(is_keyframe(key));
     let key_src_ms = frame_no(key).unwrap() as u64 * 1000 / 30;
     let behind = t.as_millis() as u64 - key_src_ms;

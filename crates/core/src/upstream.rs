@@ -48,12 +48,19 @@ impl From<io::Error> for UpstreamError {
 }
 
 /// TLS client configuration using the operating system's trust store (ring provider).
+/// The operating system's trusted root certificates, read once and shared by
+/// the relay's TLS and the HTTPS client.
+pub fn native_roots() -> &'static [rustls::pki_types::CertificateDer<'static>] {
+    static ROOTS: OnceLock<Vec<rustls::pki_types::CertificateDer<'static>>> = OnceLock::new();
+    ROOTS.get_or_init(|| rustls_native_certs::load_native_certs().certs)
+}
+
 pub fn default_tls() -> Arc<ClientConfig> {
     static CFG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     CFG.get_or_init(|| {
         let mut roots = rustls::RootCertStore::empty();
-        for cert in rustls_native_certs::load_native_certs().certs {
-            let _ = roots.add(cert);
+        for cert in native_roots() {
+            let _ = roots.add(cert.clone());
         }
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         Arc::new(

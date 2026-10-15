@@ -233,14 +233,31 @@ pub fn parse_audio(p: &[u8]) -> Option<AudioInfo> {
     Some(AudioInfo { codec, is_config: matches!(packet_type, 0 | 4), track_id })
 }
 
-/// The `onMetaData` object of a script-data message (`@setDataFrame` form or plain).
+/// Script data larger than this is never parsed as `onMetaData` (real
+/// metadata is a few hundred bytes; this bounds work on hostile input).
+pub const MAX_METADATA_BYTES: usize = 64 * 1024;
+
+/// The `onMetaData` object of a script-data message (`@setDataFrame` form or
+/// plain). Only the leading values are decoded unless the name matches.
 pub fn metadata(amf0_body: &[u8]) -> Option<Amf0> {
-    let values = amf0::decode_all(amf0_body).ok()?;
-    let mut it = values.into_iter().skip_while(|v| v.as_str() == Some("@setDataFrame"));
-    if it.next()?.as_str()? != "onMetaData" {
+    if amf0_body.len() > MAX_METADATA_BYTES {
         return None;
     }
-    it.find(|v| matches!(v, Amf0::Object(_) | Amf0::EcmaArray(_)))
+    let mut rest = amf0_body;
+    let mut name = amf0::decode_one(&mut rest).ok()?;
+    if name.as_str() == Some("@setDataFrame") {
+        name = amf0::decode_one(&mut rest).ok()?;
+    }
+    if name.as_str()? != "onMetaData" {
+        return None;
+    }
+    while !rest.is_empty() {
+        let v = amf0::decode_one(&mut rest).ok()?;
+        if matches!(v, Amf0::Object(_) | Amf0::EcmaArray(_)) {
+            return Some(v);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -328,6 +345,9 @@ mod tests {
         assert_eq!(metadata(&a), Some(obj.clone()));
         let b = amf0::encode_all(&[Amf0::str("onMetaData"), obj.clone()]);
         assert_eq!(metadata(&b).unwrap().get("width").and_then(Amf0::as_f64), Some(1920.0));
-        assert_eq!(metadata(&amf0::encode_all(&[Amf0::str("onCuePoint"), obj])), None);
+        assert_eq!(metadata(&amf0::encode_all(&[Amf0::str("onCuePoint"), obj.clone()])), None);
+        let mut huge = amf0::encode_all(&[Amf0::str("onMetaData"), obj]);
+        huge.resize(MAX_METADATA_BYTES + 1, 0x05);
+        assert_eq!(metadata(&huge), None, "oversized script data is not parsed");
     }
 }

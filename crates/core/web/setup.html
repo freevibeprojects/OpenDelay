@@ -4,22 +4,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="opendelay-token" content="{{TOKEN}}">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenDelay setup</title>
 <link rel="stylesheet" href="/assets/style.css">
-<style>
-  body { background: var(--bg-base); padding: 32px 16px; }
-  main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-  h1 { font-size: 24px; margin: 0 0 8px; }
-  h2 { font-size: 16px; margin: 0 0 8px; }
-  p { color: var(--text-secondary); line-height: 1.5; margin: 6px 0; }
-  .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 20px; }
-  code { display: block; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--r-md);
-         padding: 10px 12px; font-size: 13px; color: var(--text-primary); user-select: all; margin: 6px 0; }
-  .route { margin-top: 10px; }
-  .route b { font-size: 13px; }
-</style>
+<link rel="stylesheet" href="/assets/setup.css">
 </head>
 <body>
 <main>
@@ -42,24 +30,6 @@
   <p data-t="setup_app"></p>
 </main>
 <script src="/assets/common.js"></script>
-<script>
-"use strict";
-OD.loadLanguage().then(async () => {
-  document.getElementById("overlay").textContent = `${location.origin}/overlay`;
-  document.getElementById("dock").textContent = `${location.origin}/dock`;
-  const [routes, st] = await Promise.all([fetch("/api/routes").then((r) => r.json()), OD.status()]);
-  const box = document.getElementById("routes");
-  for (const r of routes.data.filter((r) => r.enabled)) {
-    const div = document.createElement("div");
-    div.className = "route";
-    const name = document.createElement("b");
-    name.textContent = r.name;
-    const url = document.createElement("code");
-    url.textContent = `rtmp://127.0.0.1:${st.listener.port}/${r.path}`;
-    div.append(name, url);
-    box.append(div);
-  }
-});
-</script>
+<script src="/assets/setup.js"></script>
 </body>
 </html>
