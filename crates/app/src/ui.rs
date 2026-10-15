@@ -108,22 +108,23 @@ impl Ui {
         } else {
             name
         };
-        self.state().invoke_report(ss(name), reply.success, ss(reply.code.unwrap_or("")), ss(&reply.message));
+        let detail = reply.detail.map_or_else(|| ss(&reply.message), ss);
+        self.state().invoke_report(ss(name), reply.success, ss(reply.code.unwrap_or("")), detail);
         self.poll_fast();
-        self.refresh_status(&reply.status);
+        self.refresh_status(&reply.status, &self.app.settings());
         reply
     }
 
     fn refresh(&self) {
-        self.refresh_status(&self.app.status());
         let settings = self.app.settings();
+        self.refresh_status(&self.app.status(), &settings);
         if self.shown.borrow().settings.as_ref() != Some(&settings) {
             self.apply_settings(&settings);
             self.shown.borrow_mut().settings = Some(settings);
         }
     }
 
-    fn refresh_status(&self, st: &Status) {
+    fn refresh_status(&self, st: &Status, settings: &Settings) {
         let s = self.state();
         let cfg = self.app.relay.delay_config();
         s.set_state(ss(st.state));
@@ -203,7 +204,6 @@ impl Ui {
             self.shown.borrow_mut().streams = streams;
         }
 
-        let settings = self.app.settings();
         let port = self.app.rtmp_port();
         let routes: Vec<RouteItem> = settings
             .routes
@@ -477,7 +477,8 @@ impl Ui {
 }
 
 fn open_url(key: &str) {
-    let base = env!("CARGO_PKG_REPOSITORY");
+    // Release builds can point the links at the published project.
+    let base = option_env!("OPENDELAY_REPOSITORY").unwrap_or(env!("CARGO_PKG_REPOSITORY"));
     let url = match key {
         "docs" => format!("{base}#readme"),
         "protocol" => format!("{base}/blob/main/docs/controller-protocol.md"),
@@ -490,7 +491,7 @@ fn open_url(key: &str) {
 /// Build the window, wire every callback and start polling.
 pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint::PlatformError> {
     let window = MainWindow::new()?;
-    let tray = Tray::new().ok();
+    let tray = if platform::tray_host_available() { Tray::new().ok() } else { None };
     let ui = Rc::new(Ui {
         window,
         tray,
@@ -528,6 +529,8 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     s.set_onboarding_open(!settings.onboarding_complete);
     if !ui.hotkeys.borrow().available() {
         s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_unsupported"), ss("")));
+    } else if ui.hotkeys.borrow().uses_portal() {
+        s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_portal"), ss("")));
     } else if hotkeys::wayland() {
         s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_wayland"), ss("")));
     }
@@ -652,6 +655,18 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         }
     }));
     s.on_refresh_logs(with_ui!(|u| u.refresh_logs()));
+    s.on_save_log(with_ui!(|u, id| {
+        let saved = (|| {
+            let text = u.app.diagnostic(&id).ok_or("log not found")?;
+            let dir = platform::downloads_dir().ok_or("no Downloads folder")?;
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join(format!("opendelay-{id}.log")), text).map_err(|e| e.to_string())
+        })();
+        match saved {
+            Ok(()) => u.state().invoke_report(ss("log-saved"), true, ss(""), ss("")),
+            Err(e) => u.toast_problem("save_failed", &e.to_string()),
+        }
+    }));
     s.on_finish_onboarding(with_ui!(|u, preset, server| u.finish_onboarding(&preset, &server)));
     s.on_refresh_twitch_servers(with_ui!(|u| u.fetch_twitch_servers(true)));
     s.on_check_update(with_ui!(|u| u.check_update()));
@@ -727,6 +742,9 @@ impl Ui {
         let last = Cell::new(Instant::now());
         timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             let Some(u) = weak.upgrade() else { return };
+            if u.app.take_show_request() {
+                u.show_window();
+            }
             let pressed = u.hotkeys.borrow().pressed();
             for which in pressed {
                 u.on_hotkey(which);

@@ -62,6 +62,8 @@ pub struct Reply {
     pub message: String,
     /// Refusal reason code when `success` is false.
     pub code: Option<&'static str>,
+    /// Sub-code for `invalid_in_mode` / `invalid_value` refusals.
+    pub detail: Option<&'static str>,
     pub status: Status,
 }
 
@@ -162,6 +164,11 @@ pub struct App {
     settings_path: Option<PathBuf>,
     log_dir: Option<PathBuf>,
     overlay_visible: AtomicBool,
+    /// Set by a second launch asking this instance to show its window.
+    show_requested: AtomicBool,
+    /// (refreshed at, addresses): interface enumeration is a syscall per
+    /// interface, too slow for every status poll.
+    lan_cache: Mutex<(Option<Instant>, Vec<String>)>,
     token: String,
     active_listener: ListenerMode,
     rtmp_port: AtomicU16,
@@ -198,9 +205,9 @@ fn random_token() -> String {
 }
 
 fn seconds(s: f64, min: Duration, max: Duration) -> Result<Duration, Refusal> {
-    let d = Duration::try_from_secs_f64(s).map_err(|_| Refusal::InvalidValue("Invalid number of seconds."))?;
+    let d = Duration::try_from_secs_f64(s).map_err(|_| Refusal::InvalidValue("not_a_number"))?;
     if d < min || d > max {
-        return Err(Refusal::InvalidValue("The value is out of range."));
+        return Err(Refusal::InvalidValue(if min == MIN_BUFFER { "buffer_range" } else { "delay_range" }));
     }
     Ok(d)
 }
@@ -256,11 +263,31 @@ impl App {
             settings_path,
             log_dir,
             overlay_visible: AtomicBool::new(true),
+            show_requested: AtomicBool::new(false),
+            lan_cache: Mutex::new((None, Vec::new())),
             token: random_token(),
             rtmp_port: AtomicU16::new(RTMP_PORT),
             http_port: AtomicU16::new(HTTP_PORT),
             changed: watch::Sender::new(0),
         })
+    }
+
+    fn lan_addresses(&self) -> Vec<String> {
+        let mut c = self.lan_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if c.0.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
+            *c = (Some(Instant::now()), lan_addresses());
+        }
+        c.1.clone()
+    }
+
+    /// Another launch asked to bring this instance's window forward.
+    pub fn request_show(&self) {
+        self.show_requested.store(true, Ordering::SeqCst);
+        self.notify();
+    }
+
+    pub fn take_show_request(&self) -> bool {
+        self.show_requested.swap(false, Ordering::SeqCst)
     }
 
     /// Per-run API token for state-changing HTTP requests.
@@ -368,7 +395,8 @@ impl App {
             self.persist_delay_config();
         }
         self.notify();
-        self.reply(result.map_err(|r| (r.to_string(), r.code())))
+        let detail = result.as_ref().err().and_then(Refusal::detail);
+        Reply { detail, ..self.reply(result.map_err(|r| (r.to_string(), r.code()))) }
     }
 
     /// Save delay settings changed by an action (SPEC §4.6).
@@ -391,7 +419,7 @@ impl App {
             Ok(m) => (true, m, None),
             Err((m, c)) => (false, m, Some(c)),
         };
-        Reply { success, message, code, status: self.status() }
+        Reply { success, message, code, detail: None, status: self.status() }
     }
 
     pub fn status(&self) -> Status {
@@ -437,7 +465,7 @@ impl App {
                 configured_mode: settings.listener_mode,
                 restart_required: settings.listener_mode != self.active_listener,
                 port: self.rtmp_port(),
-                lan_addresses: lan_addresses(),
+                lan_addresses: self.lan_addresses(),
             },
         }
     }

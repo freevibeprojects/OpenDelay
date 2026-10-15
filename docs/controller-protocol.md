@@ -52,12 +52,15 @@ Every request gets exactly one response:
   "success": true,
   "message": "Delay on: viewers are now 30 s behind.",
   "code": null,
+  "detail": null,
   "status": { "...": "see Status below" }
 }
 ```
 
 When `success` is `false`, `code` is a machine-readable reason and `message`
-explains it in English. Malformed or unknown requests also get a response
+explains it in English. For `invalid_in_mode` and `invalid_value`, `detail`
+names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
+`buffer_range`, `not_a_number`); it is `null` otherwise. Malformed or unknown requests also get a response
 (never a disconnect).
 
 ### Actions
@@ -196,6 +199,8 @@ The same actions are available over HTTP for scripts and the OBS dock:
   /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`.
 - `GET /api/diagnostics`, `GET /api/diagnostics/{id}` — session logs.
 - `GET /api/update` — release feed check (never downloads).
+- `POST /api/window/show` — bring the desktop window forward (used when
+  OpenDelay is started a second time).
 
 State-changing HTTP requests (`POST`, `PUT`, `DELETE`) need the header
 `X-OpenDelay-Token`, whose per-run value is only available inside pages served

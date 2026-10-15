@@ -83,13 +83,20 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
 
 ### Platform notes
 
-- **Tray icon (Linux)** uses the StatusNotifierItem protocol (KDE, most other
-  desktops; GNOME needs the AppIndicator extension). Because a missing tray
-  would leave a hidden window unreachable, closing the window quits on Linux
-  unless you choose "Keep in tray" in Settings.
-- **Global hotkeys** work on Windows and X11. Wayland compositors do not allow
-  global key grabs; bind your desktop's own shortcuts to the controller
-  WebSocket or the HTTP API instead (see the controller protocol).
+- **Tray icon (Linux)** uses the StatusNotifierItem protocol (KDE, waybar,
+  most other desktops; GNOME needs the AppIndicator extension). OpenDelay
+  checks for a tray host at startup; without one, closing the window quits
+  instead of hiding it.
+- **Global hotkeys** use system-wide key grabs on Windows and X11. On Wayland
+  they go through the desktop's GlobalShortcuts portal (KDE Plasma, GNOME 48+,
+  Hyprland), which asks you to confirm the shortcuts. Compositors without that
+  portal (e.g. sway) allow no global shortcuts: bind your desktop's own
+  shortcuts to the controller WebSocket or the HTTP API instead.
+- **Rendering** uses OpenGL. If OpenGL is unusable (some VMs and remote
+  desktops), OpenDelay restarts with its software renderer and remembers that
+  in a `software-renderer` file next to the settings; delete the file to try
+  OpenGL again.
+- **One instance**: starting OpenDelay again brings the running window forward.
 - **Start with the system** writes the per-user `Run` registry value on
   Windows and `~/.config/autostart/opendelay.desktop` on Linux.
 - Settings live in `%APPDATA%\OpenDelay` / `~/.config/opendelay`, session logs
@@ -130,16 +137,22 @@ python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.md
 
 ## Releases and updates
 
-The optional update check reads the release feed set in
-`crates/core/src/update.rs` (`FEED_URL`, GitHub "latest release" format; a
-placeholder until the project is published). An update is only kept after its
-Ed25519 signature verifies against `PUBLIC_KEY` (also a placeholder: all
-downloads are rejected until it is set). To sign a release archive with
-OpenSSL 3:
+The optional update check reads a release feed (GitHub "latest release"
+format) and keeps a download only after its Ed25519 signature verifies.
+Release builds set three build-time variables; without them the feed URL and
+help links are placeholders and every download is rejected (fail closed):
+
+| Variable | Meaning |
+|---|---|
+| `OPENDELAY_UPDATE_FEED` | release feed URL, e.g. `https://api.github.com/repos/OWNER/opendelay/releases/latest` |
+| `OPENDELAY_UPDATE_KEY` | Ed25519 public key, 64 hex digits |
+| `OPENDELAY_REPOSITORY` | project URL used by the Help page links |
+
+To create the key and sign a release archive with OpenSSL 3:
 
 ```sh
 openssl genpkey -algorithm ed25519 -out release-key.pem      # once; keep it secret
-openssl pkey -in release-key.pem -pubout -outform DER | tail -c 32 | xxd -i   # PUBLIC_KEY bytes
+openssl pkey -in release-key.pem -pubout -outform DER | tail -c 32 | xxd -p -c 64   # OPENDELAY_UPDATE_KEY
 openssl pkeyutl -sign -inkey release-key.pem -rawin -in opendelay-X.Y.Z-windows-x86_64.zip \
     | base64 -w0 > opendelay-X.Y.Z-windows-x86_64.zip.sig
 ```

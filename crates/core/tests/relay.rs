@@ -250,3 +250,36 @@ async fn delay_actions_through_the_relay() {
     assert_eq!(relay.delay_config().buffer, Duration::from_secs(5), "buffer grows to fit the delay");
     assert_eq!(relay.set_buffer(Duration::from_secs(1)).unwrap_err().code(), "invalid_value");
 }
+
+#[tokio::test]
+async fn another_machine_cannot_take_over_a_live_route() {
+    let ingest = MockIngest::start(Behaviour::default()).await;
+    let (relay, addr) = relay_for(vec![route("t", format!("rtmp://{}/app", ingest.addr))], Default::default()).await;
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+
+    let (_intruder, reply) = Encoder::connect_from(addr, "t", "127.0.0.2").await;
+    assert_eq!(reply.name, "_error", "a different machine is refused");
+    assert_eq!(relay.sessions().len(), 1);
+
+    // The same machine reconnecting replaces its stale session.
+    let (mut again, reply) = Encoder::connect(addr, "t").await;
+    assert_eq!(reply.name, "_result");
+    assert_eq!(status_code(&again.publish("k").await), "NetStream.Publish.Start");
+    assert!(enc.closed_within(WAIT).await, "old session was replaced");
+}
+
+#[tokio::test]
+async fn connection_limit() {
+    let relay = Relay::new(vec![], RelayOptions::default());
+    let addr = relay.listen("127.0.0.1:0".parse().unwrap()).await.unwrap();
+    let mut held = Vec::new();
+    for _ in 0..opendelay_core::relay::MAX_CONNECTIONS {
+        held.push(tokio::net::TcpStream::connect(addr).await.unwrap());
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let mut extra = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let mut buf = [0u8; 1];
+    let n = tokio::time::timeout(WAIT, tokio::io::AsyncReadExt::read(&mut extra, &mut buf)).await.unwrap();
+    assert!(matches!(n, Ok(0) | Err(_)), "connection over the limit is closed");
+}

@@ -73,9 +73,8 @@ impl Default for Settings {
             version: VERSION,
             routes: default_routes(),
             start_with_os: false,
-            // Linux desktops without a tray host would leave a hidden window
-            // unreachable, so closing quits there unless the user opts in.
-            quit_on_close: !cfg!(windows),
+            // Without a tray (detected at startup) closing always quits.
+            quit_on_close: false,
             onboarding_complete: false,
             delay_mode_enabled: true,
             default_buffer_secs: 60,
@@ -130,9 +129,11 @@ impl Settings {
     pub fn save(&self, path: &Path) -> io::Result<()> {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
+            crate::diag::make_private(dir);
         }
         let tmp = path.with_extension("json.tmp");
         fs::write(&tmp, serde_json::to_vec_pretty(self).map_err(io::Error::other)?)?;
+        crate::diag::make_private(&tmp);
         fs::rename(tmp, path)
     }
 

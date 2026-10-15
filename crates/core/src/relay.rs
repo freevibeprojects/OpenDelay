@@ -7,7 +7,7 @@ use crate::routes::{Route, normalize_path};
 use crate::session::{self, Phase, Session};
 use crate::upstream;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -40,6 +40,8 @@ impl DelayConfig {
 }
 
 pub const MIN_BUFFER: Duration = Duration::from_secs(5);
+/// Concurrent encoder connections (LAN mode accepts untrusted peers).
+pub const MAX_CONNECTIONS: usize = 32;
 
 fn secs(d: Duration) -> String {
     let s = d.as_secs();
@@ -64,6 +66,8 @@ pub(crate) struct Shared {
     emergency: AtomicBool,
     next_id: AtomicU64,
     delay: Mutex<DelayConfig>,
+    /// Shared by all listeners: one permit per open encoder connection.
+    slots: Arc<tokio::sync::Semaphore>,
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
@@ -105,14 +109,19 @@ impl Shared {
         self.lock_sessions().retain(|s| s.id != id);
     }
 
-    /// Stop sessions already publishing on `path` and wait (≤ 3 s) for them to end.
-    pub async fn replace_route_sessions(&self, path: &str) {
+    /// Before a new publish on `path`: stop the sessions the same machine left
+    /// on that route (an encoder reconnecting) and wait (≤ 3 s) for them to
+    /// end. Another machine cannot take over a route that is in use.
+    pub async fn replace_route_sessions(&self, path: &str, peer: IpAddr) -> Result<(), String> {
         let old: Vec<Arc<Session>> = self
             .lock_sessions()
             .iter()
             .filter(|s| normalize_path(&s.route.path) == normalize_path(path))
             .cloned()
             .collect();
+        if old.iter().any(|s| s.peer.ip() != peer) {
+            return Err("This route is already receiving a stream from another computer.".into());
+        }
         for s in &old {
             s.log.event("Replaced by a new encoder connection on the same route");
             s.token.cancel();
@@ -121,6 +130,7 @@ impl Shared {
         while Instant::now() < deadline && self.lock_sessions().iter().any(|s| old.iter().any(|o| o.id == s.id)) {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        Ok(())
     }
 }
 
@@ -139,6 +149,7 @@ impl Relay {
                 emergency: AtomicBool::new(false),
                 next_id: AtomicU64::new(1),
                 delay: Mutex::new(opts.delay),
+                slots: Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS)),
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,
@@ -151,14 +162,21 @@ impl Relay {
         let listener = TcpListener::bind(addr).await?;
         let local = listener.local_addr()?;
         let shared = self.shared.clone();
+        let slots = self.shared.slots.clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = shared.stop.cancelled() => break,
                     accepted = listener.accept() => match accepted {
                         Ok((tcp, peer)) => {
+                            // Over the limit the connection is simply closed.
+                            let Ok(slot) = slots.clone().try_acquire_owned() else { continue };
                             let id = shared.next_id.fetch_add(1, Ordering::Relaxed);
-                            tokio::spawn(session::run(shared.clone(), tcp, peer, id));
+                            let shared = shared.clone();
+                            tokio::spawn(async move {
+                                session::run(shared, tcp, peer, id).await;
+                                drop(slot);
+                            });
                         }
                         // e.g. out of file descriptors: back off briefly
                         Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
@@ -266,7 +284,7 @@ impl Relay {
 
     fn check_delay(d: Duration) -> Result<(), Refusal> {
         if d.is_zero() || d > engine::MAX_DELAY {
-            return Err(Refusal::InvalidValue("The delay must be between 1 second and 10 minutes."));
+            return Err(Refusal::InvalidValue("delay_range"));
         }
         Ok(())
     }
@@ -323,7 +341,7 @@ impl Relay {
     /// Resize the rolling buffer.
     pub fn set_buffer(&self, buffer: Duration) -> Result<String, Refusal> {
         if buffer < MIN_BUFFER || buffer > engine::MAX_DELAY {
-            return Err(Refusal::InvalidValue("The buffer must be between 5 seconds and 10 minutes."));
+            return Err(Refusal::InvalidValue("buffer_range"));
         }
         let cfg = DelayConfig { buffer, ..self.delay_config() };
         let sessions = self.streaming();
@@ -342,7 +360,7 @@ impl Relay {
     pub fn set_delay_mode(&self, on: bool) -> Result<String, Refusal> {
         let sessions = self.streaming();
         if !on && sessions.iter().any(|s| s.engine().is_active()) {
-            return Err(Refusal::InvalidInMode("Go live before turning delay mode off."));
+            return Err(Refusal::InvalidInMode("go_live_first"));
         }
         self.update_config(|c| c.mode_enabled = on);
         let retain = self.delay_config().retain();

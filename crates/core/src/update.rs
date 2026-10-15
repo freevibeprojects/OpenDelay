@@ -9,11 +9,39 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// The project's release feed. Placeholder until the project is published.
-pub const FEED_URL: &str = "https://example.invalid/opendelay/releases/latest";
-/// Ed25519 key that signs release archives. Placeholder: with this all-zero
-/// key every download fails verification (fail closed) until the real key is set.
-pub const PUBLIC_KEY: [u8; 32] = [0; 32];
+/// The project's release feed. Release builds set `OPENDELAY_UPDATE_FEED`;
+/// the default is a placeholder until the project is published.
+pub const FEED_URL: &str = match option_env!("OPENDELAY_UPDATE_FEED") {
+    Some(url) => url,
+    None => "https://example.invalid/opendelay/releases/latest",
+};
+
+/// Ed25519 key that signs release archives, from `OPENDELAY_UPDATE_KEY` (64 hex
+/// digits) at build time. Without it the key is all zero and every download
+/// fails verification (fail closed).
+pub const PUBLIC_KEY: [u8; 32] = match option_env!("OPENDELAY_UPDATE_KEY") {
+    Some(hex) => parse_key(hex.as_bytes()),
+    None => [0; 32],
+};
+
+const fn parse_key(hex: &[u8]) -> [u8; 32] {
+    assert!(hex.len() == 64, "OPENDELAY_UPDATE_KEY must be 64 hex digits");
+    const fn nibble(c: u8) -> u8 {
+        match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => panic!("OPENDELAY_UPDATE_KEY must be hex"),
+        }
+    }
+    let mut key = [0u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        key[i] = nibble(hex[2 * i]) << 4 | nibble(hex[2 * i + 1]);
+        i += 1;
+    }
+    key
+}
 const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -123,6 +151,12 @@ pub fn download(info: &UpdateInfo, dir: &Path) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+
+    #[test]
+    fn key_parsing() {
+        let k = parse_key(b"00112233445566778899aabbccddeeff00112233445566778899AABBCCDDEEFF");
+        assert_eq!((k[0], k[1], k[15], k[31]), (0x00, 0x11, 0xff, 0xff));
+    }
 
     #[test]
     fn version_order() {
