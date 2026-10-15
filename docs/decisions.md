@@ -153,13 +153,14 @@ Each entry: the decision, then why.
 - **Encoder "screenshots"** in the setup assistant are drawn schematics of
   the stream-settings form (service, server, key) rather than screenshots of
   third-party software, which keeps them original and translatable.
-- **Translations**: desktop strings use Slint `@tr()` with bundled gettext
-  catalogues in `crates/app/lang/<code>/LC_MESSAGES/opendelay.po`; the
-  language list is generated at build time from that folder (the native name
-  comes from the `X-Language-Name` header). Adding a language = adding a
-  `.po` file. `scripts/extract_strings.py <po>` lists missing strings. Errors
-  and refusals from the core carry stable codes that the UI translates; only
-  low-level network error details stay in English.
+- **Translations**: the UI ships in English only (French was removed at the
+  project owner's request, although SPEC §7.4 mentions it). Every desktop
+  string still goes through Slint `@tr()`: adding
+  `crates/app/lang/<code>/LC_MESSAGES/opendelay.po` (with an
+  `X-Language-Name` header) bundles it at build time and shows the language
+  picker in Settings; web pages read `crates/core/web/lang/<code>.json`. No
+  code changes are needed. Errors and refusals from the core carry stable codes
+  that the UI turns into text.
 - **Diagnostics in the desktop app** open the log file or the logs folder with
   the system handler; download is offered by the HTTP API.
 - **Help links** point at the repository URL from `Cargo.toml`, still a

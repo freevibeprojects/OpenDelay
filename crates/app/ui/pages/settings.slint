@@ -40,7 +40,8 @@ export component SettingsPage {
                     }
                 }
                 Divider { }
-                SettingRow {
+                // Shown once a translation is installed (choices: system default + English + more).
+                if AppState.languages.length > 2: SettingRow {
                     title: @tr("Language");
                     Select {
                         label: @tr("Language");
@@ -51,7 +52,7 @@ export component SettingsPage {
                         chosen(v) => { AppState.set-language(v); }
                     }
                 }
-                Divider { }
+                if AppState.languages.length > 2: Divider { }
                 SettingRow {
                     title: @tr("Reduce motion");
                     description: @tr("Turn off animations such as the rolling digits.");

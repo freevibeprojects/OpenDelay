@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """List the msgids of every @tr("...") in the desktop UI, one JSON string per line.
 With a .po file argument, list only the msgids that file does not translate:
-    python3 scripts/extract_strings.py crates/app/lang/fr/LC_MESSAGES/opendelay.po"""
+    python3 scripts/extract_strings.py crates/app/lang/<code>/LC_MESSAGES/opendelay.po"""
 import glob, json, re, sys
 
 TR = re.compile(r'@tr\(\s*"((?:[^"\\]|\\.)*)"')
