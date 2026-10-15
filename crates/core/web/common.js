@@ -7,7 +7,7 @@ const OD = (() => {
   const token = document.querySelector('meta[name="opendelay-token"]')?.content ?? "";
   let strings = {};
 
-  // ?lang=fr, otherwise the browser language, otherwise English.
+  // ?lang=<code>, otherwise the browser language, otherwise English.
   async function loadLanguage() {
     const wanted = [params.get("lang"), ...(navigator.languages || [])]
       .filter(Boolean)

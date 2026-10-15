@@ -2,16 +2,11 @@
 use std::fmt::Write;
 
 fn main() {
-    let config = slint_build::CompilerConfiguration::new()
-        .with_style("fluent-dark".into())
-        .with_bundled_translations("lang")
-        .with_default_translation_context(slint_build::DefaultTranslationContext::None);
-    slint_build::compile_with_config("ui/app.slint", config).expect("Slint build failed");
-
     // Languages = every lang/<code>/LC_MESSAGES/opendelay.po, named by its
     // "X-Language-Name" header, so adding a language needs no code change.
+    // The UI text itself is English.
     let mut langs: Vec<(String, String)> = Vec::new();
-    for entry in std::fs::read_dir("lang").expect("lang directory").flatten() {
+    for entry in std::fs::read_dir("lang").into_iter().flatten().flatten() {
         let code = entry.file_name().to_string_lossy().into_owned();
         let po = entry.path().join("LC_MESSAGES/opendelay.po");
         let Ok(text) = std::fs::read_to_string(&po) else { continue };
@@ -26,6 +21,13 @@ fn main() {
         langs.push((code, name));
     }
     langs.sort();
+    let mut config = slint_build::CompilerConfiguration::new()
+        .with_style("fluent-dark".into())
+        .with_default_translation_context(slint_build::DefaultTranslationContext::None);
+    if !langs.is_empty() {
+        config = config.with_bundled_translations("lang");
+    }
+    slint_build::compile_with_config("ui/app.slint", config).expect("Slint build failed");
     let mut out = String::from("pub const LANGUAGES: &[(&str, &str)] = &[(\"en\", \"English\"), ");
     for (code, name) in langs {
         write!(out, "({code:?}, {name:?}), ").unwrap();

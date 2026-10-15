@@ -284,13 +284,9 @@ async fn web_assets_and_translations() {
         assert_eq!(r.code, 200, "{page}");
         assert!(r.body.contains("/assets/common.js"));
     }
-    let r = http(&s, "GET", "/assets/lang/fr.json", &[], "").await;
+    let r = http(&s, "GET", "/assets/lang/en.json", &[], "").await;
     assert_eq!(r.code, 200);
-    assert_eq!(r.json()["_name"], "Français");
-    let en = http(&s, "GET", "/assets/lang/en.json", &[], "").await.json();
-    let fr = r.json();
-    let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-    assert_eq!(keys(&en), keys(&fr), "every web language has every key");
+    assert_eq!(r.json()["_name"], "English");
     assert_eq!(http(&s, "GET", "/assets/lang/xx.json", &[], "").await.code, 404);
     assert_eq!(http(&s, "GET", "/assets/lang/..%2Fdock.html", &[], "").await.code, 404);
     let font = http(&s, "GET", "/assets/inter-400.woff2", &[], "").await;

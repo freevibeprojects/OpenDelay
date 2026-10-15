@@ -116,8 +116,11 @@ cargo deny check          # cargo install cargo-deny
 Developer tools: `cargo run -p opendelay-core --example serve` runs the relay
 and web server without a window; `cargo run -p opendelay --example screenshot
 --features screenshot -- DIR` renders every page offscreen.
-`python3 scripts/extract_strings.py crates/app/lang/fr/LC_MESSAGES/opendelay.po`
-lists untranslated desktop strings.
+The UI is in English. To add a language, add
+`crates/app/lang/<code>/LC_MESSAGES/opendelay.po` (desktop, with an
+`X-Language-Name` header) and `crates/core/web/lang/<code>.json` (OBS pages);
+no code changes are needed, and a language picker appears in Settings.
+`python3 scripts/extract_strings.py <po file>` lists untranslated strings.
 
 After changing dependencies, regenerate the licence list:
 
