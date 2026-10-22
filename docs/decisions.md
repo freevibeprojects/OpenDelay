@@ -260,9 +260,16 @@ Each entry: the decision, then why.
   estimate with empty payloads, very large metadata dimensions). The RTMP
   parsers and the delay engine are fuzzed with libFuzzer (`fuzz/`, see the
   README); the engine target checks that upstream timestamps never decrease.
-- **LAN mode** is an open relay towards the configured platforms for anyone
-  on the local network who has their own stream key; it is opt-in and the
-  settings say so.
+- **LAN mode access key**: other computers must add `?key=<key>` to the server
+  URL (`rtmp://<lan-ip>:1935/<route>?key=…`); OBS and librtmp-based encoders
+  pass that query in `app` and `tcUrl`, where it is checked (constant time)
+  before the route lookup, the platform connection and the session log. The
+  key is 16 random hex digits created once per installation, kept in the
+  settings and shown on the Setup page; this computer (127.0.0.1, ::1) needs
+  none. Without it, LAN mode was an open relay for anyone on the network,
+  who could also take a route before the user's encoder or push the user's
+  session logs out of rotation. The query never reaches the platform (`app`,
+  `tcUrl` and `swfUrl` are rewritten).
 
 ## Performance
 

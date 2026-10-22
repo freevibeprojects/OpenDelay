@@ -273,6 +273,32 @@ async fn another_machine_cannot_take_over_a_live_route() {
 }
 
 #[tokio::test]
+async fn other_computers_need_the_lan_key() {
+    let ingest = MockIngest::start(Behaviour::default()).await;
+    let opts = RelayOptions { lan_key: Some("0123456789abcdef".into()), ..Default::default() };
+    let (relay, addr) = relay_for(vec![route("t", format!("rtmp://{}/app", ingest.addr))], opts).await;
+
+    for app in ["t", "t?key=wrong", "t?key=0123456789abcde"] {
+        let (_enc, reply) = Encoder::connect_from(addr, app, "127.0.0.2").await;
+        assert_eq!(reply.name, "_error", "{app}");
+        assert_eq!(status_code(&reply.args[0]), "NetConnection.Connect.Rejected");
+    }
+    assert!(ingest.seen().is_empty(), "refused before contacting the platform");
+
+    let (mut remote, reply) = Encoder::connect_from(addr, "t?x=1&key=0123456789abcdef", "127.0.0.2").await;
+    assert_eq!(reply.name, "_result");
+    assert_eq!(status_code(&remote.publish("k").await), "NetStream.Publish.Start");
+    let seen = ingest.seen();
+    assert!(matches!(&seen[0], Seen::Connect { app, .. } if app == "app"), "the key is not forwarded");
+    remote.unpublish().await;
+    wait_no_sessions(&relay).await;
+
+    // This computer needs no key.
+    let (_local, reply) = Encoder::connect(addr, "t").await;
+    assert_eq!(reply.name, "_result");
+}
+
+#[tokio::test]
 async fn connection_limit() {
     let relay = Relay::new(vec![], RelayOptions::default());
     let addr = relay.listen("127.0.0.1:0".parse().unwrap()).await.unwrap();

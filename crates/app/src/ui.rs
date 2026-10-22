@@ -518,6 +518,7 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
 
     let s = ui.state();
     s.set_version(ss(env!("CARGO_PKG_VERSION")));
+    s.set_lan_key(ss(&settings.lan_key));
     let http = ui.app.http_port();
     s.set_overlay_url(ss(format!("http://127.0.0.1:{http}/overlay")));
     s.set_dock_url(ss(format!("http://127.0.0.1:{http}/dock")));
