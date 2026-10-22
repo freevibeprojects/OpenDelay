@@ -272,7 +272,7 @@ export global Strings {
 
     public pure function finding-detail(code: string, value: string, limit: string) -> string {
         if (code == "codec") { return @tr("{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder.", value); }
-        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. The delay can only switch on a keyframe; set the keyframe interval to {} or less.", value, limit); }
+        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder (OBS: Settings → Output).", value, limit); }
         if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall.", value); }
         if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder for cleaner switches."); }
         if (code == "timestamps") { return @tr("The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."); }

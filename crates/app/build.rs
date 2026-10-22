@@ -38,6 +38,11 @@ fn main() {
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         windows_icon();
+        if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+            // Load the executable's DLL imports from System32 only, never from
+            // its own folder (where a planted DLL could wait, e.g. Downloads).
+            println!("cargo:rustc-link-arg-bins=/DEPENDENTLOADFLAG:0x800");
+        }
     }
 }
 

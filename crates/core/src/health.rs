@@ -192,7 +192,10 @@ impl HealthAnalyzer {
         }
         let interval =
             (!self.intervals.is_empty()).then(|| self.intervals.iter().sum::<u64>() / self.intervals.len() as u64);
-        if let Some(ms) = interval.filter(|ms| *ms > KEYFRAME_WARN_MS) {
+        // The current gap since the last keyframe reports a long interval
+        // after the first GOP instead of waiting for a second keyframe.
+        let open_gap = self.last_keyframe.zip(self.last_ts[1]).map(|((_, k), t)| t.saturating_sub(k).max(0) as u64);
+        if let Some(ms) = interval.max(open_gap).filter(|ms| *ms > KEYFRAME_WARN_MS) {
             let severity = if ms > 2 * KEYFRAME_WARN_MS { Severity::High } else { Severity::Medium };
             add(
                 "keyframe_interval",
@@ -201,7 +204,7 @@ impl HealthAnalyzer {
                 format!("{:.1} s", ms as f64 / 1000.0),
                 "2 s".into(),
                 format!(
-                    "Keyframes arrive every {:.1} s; delay switches can only land on keyframes. Set the keyframe interval to 2 s or less.",
+                    "Keyframes arrive every {:.1} s. Platforms such as Twitch may show viewers a black screen, and delay switches can only land on keyframes. Set the keyframe interval to 2 s.",
                     ms as f64 / 1000.0
                 ),
             );
@@ -307,6 +310,17 @@ mod tests {
         assert_eq!(r.codec.as_deref(), Some("H.264"));
         assert_eq!(r.frames, 600);
         assert!((1950..=2000).contains(&r.keyframe_interval_ms.unwrap()));
+    }
+
+    #[test]
+    fn long_gop_reported_before_the_second_keyframe() {
+        let t0 = Instant::now();
+        let mut h = HealthAnalyzer::new(None, t0);
+        feed(&mut h, t0, 120, 250, 0); // first keyframe, then 4 s without one
+        let r = h.report(t0 + Duration::from_secs(4));
+        assert_eq!(r.keyframe_interval_ms, None);
+        let f = r.findings.iter().find(|f| f.code == "keyframe_interval").expect("long gap reported");
+        assert_eq!((f.severity, f.value.as_str()), (Severity::Medium, "3.9 s"));
     }
 
     #[test]

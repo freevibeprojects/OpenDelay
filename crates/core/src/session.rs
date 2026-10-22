@@ -360,9 +360,11 @@ async fn serve(
     match published {
         Ok(info) => {
             ew.queue(&Message::user_control(user_control::STREAM_BEGIN, &ENCODER_STREAM_ID.to_be_bytes()));
-            ew.send(&Command::new("onStatus", 0.0, Amf0::Null, vec![info]).to_message(ENCODER_STREAM_ID))
-                .await
-                .map_err(io_err)?;
+            send_to_encoder(
+                &mut ew,
+                &Command::new("onStatus", 0.0, Amf0::Null, vec![info]).to_message(ENCODER_STREAM_ID),
+            )
+            .await?;
         }
         Err(e) => {
             let (code, desc) = match &e {
@@ -391,6 +393,15 @@ async fn serve(
     ended
 }
 
+/// Write to a publishing encoder; one that stops reading is dropped instead
+/// of stalling its session forever.
+async fn send_to_encoder(ew: &mut MsgWriter, msg: &Message) -> Res<()> {
+    match timeout(ENCODER_IDLE, ew.send(msg)).await {
+        Ok(r) => r.map_err(io_err),
+        Err(_) => Err(format!("encoder read nothing for {} s", ENCODER_IDLE.as_secs())),
+    }
+}
+
 async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) -> Res<()> {
     loop {
         let msg = tokio::select! {
@@ -407,14 +418,18 @@ async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) ->
         };
         sess.bytes_in.store(er.bytes_received(), Ordering::Relaxed);
         if let Some(a) = er.ack_due() {
-            ew.send(&a).await.map_err(io_err)?;
+            send_to_encoder(ew, &a).await?;
         }
         match msg.type_id {
             msg_type::AUDIO | msg_type::VIDEO | msg_type::DATA_AMF0 | msg_type::DATA_AMF3 => sess.push(msg),
-            msg_type::AGGREGATE => split_aggregate(&msg).into_iter().for_each(|m| sess.push(m)),
+            // Only media from inside an aggregate: control or command types would
+            // otherwise reach the upstream verbatim.
+            msg_type::AGGREGATE => {
+                split_aggregate(&msg).into_iter().filter(Message::is_media).for_each(|m| sess.push(m))
+            }
             msg_type::USER_CONTROL => {
                 if let Some(r) = control_reply(&msg) {
-                    ew.send(&r).await.map_err(io_err)?;
+                    send_to_encoder(ew, &r).await?;
                 }
             }
             msg_type::COMMAND_AMF0 | msg_type::COMMAND_AMF3 => {
@@ -425,9 +440,8 @@ async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) ->
                         return Ok(());
                     }
                     _ if cmd.transaction_id > 0.0 => {
-                        ew.send(&reply("_result", cmd.transaction_id, Amf0::Null, vec![Amf0::Null]))
-                            .await
-                            .map_err(io_err)?;
+                        send_to_encoder(ew, &reply("_result", cmd.transaction_id, Amf0::Null, vec![Amf0::Null]))
+                            .await?;
                     }
                     _ => {}
                 }
@@ -508,7 +522,9 @@ async fn recover(
 async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
     let stream_id = up.stream_id;
     let (reader, writer) = (&mut up.reader, &mut up.writer);
-    let (ctl_tx, mut ctl_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    // Bounded: a server that floods pings while not reading cannot grow it;
+    // dropped pongs and acknowledgements are harmless.
+    let (ctl_tx, mut ctl_rx) = tokio::sync::mpsc::channel::<Message>(64);
 
     let read = async {
         loop {
@@ -519,10 +535,10 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
                 ))
             })?;
             if let Some(a) = reader.ack_due() {
-                let _ = ctl_tx.send(a);
+                let _ = ctl_tx.try_send(a);
             }
             if let Some(r) = control_reply(&msg) {
-                let _ = ctl_tx.send(r);
+                let _ = ctl_tx.try_send(r);
             }
             if is_command(&msg)
                 && let Ok(cmd) = Command::parse(&msg)

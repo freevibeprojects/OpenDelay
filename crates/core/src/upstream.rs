@@ -92,6 +92,10 @@ pub fn connect_object(encoder_object: &Amf0, url: &UpstreamUrl) -> Amf0 {
     };
     obj.set("app", Amf0::String(url.app.clone()));
     obj.set("tcUrl", Amf0::String(url.tc_url()));
+    // Encoders based on librtmp copy tcUrl here: do not leak the local address.
+    if obj.get("swfUrl").is_some() {
+        obj.set("swfUrl", Amf0::String(url.tc_url()));
+    }
     obj
 }
 
@@ -246,4 +250,26 @@ pub fn control_reply(msg: &Message) -> Option<Message> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connect_object_points_at_the_upstream() {
+        let encoder = Amf0::Object(vec![
+            ("app".into(), Amf0::str("twitch")),
+            ("flashVer".into(), Amf0::str("FMLE/3.0")),
+            ("swfUrl".into(), Amf0::str("rtmp://127.0.0.1:1935/twitch")),
+            ("tcUrl".into(), Amf0::str("rtmp://127.0.0.1:1935/twitch")),
+        ]);
+        let url = UpstreamUrl::parse("rtmp://live.twitch.tv/app").unwrap();
+        let obj = connect_object(&encoder, &url);
+        for key in ["swfUrl", "tcUrl"] {
+            assert_eq!(obj.get(key).and_then(Amf0::as_str), Some("rtmp://live.twitch.tv/app"), "{key}");
+        }
+        assert_eq!(obj.get("app").and_then(Amf0::as_str), Some("app"));
+        assert_eq!(obj.get("flashVer").and_then(Amf0::as_str), Some("FMLE/3.0"));
+    }
 }

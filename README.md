@@ -104,6 +104,13 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
   (override with `OPENDELAY_CONFIG_DIR` / `OPENDELAY_DATA_DIR`).
 - The RTMP listener uses port 1935 and the local web server port 3000; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
+- **Encoder settings**: pointing OBS at OpenDelay means choosing the
+  "Custom…" service, and OBS then stops applying the platform's recommended
+  settings. In Advanced output mode its keyframe interval falls back to
+  "auto" (about 8 s with x264). Twitch viewers may then see a black screen,
+  and the delay can only switch on keyframes. Set **Keyframe Interval** to
+  2 s and **Rate Control** to CBR under Settings → Output. OpenDelay warns
+  about long keyframe intervals a few seconds after a stream starts.
 
 ### Checks
 

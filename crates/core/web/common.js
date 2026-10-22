@@ -11,7 +11,8 @@ const OD = (() => {
   async function loadLanguage() {
     const wanted = [params.get("lang"), ...(navigator.languages || [])]
       .filter(Boolean)
-      .map((l) => l.toLowerCase().split(/[-_]/)[0]);
+      .map((l) => l.toLowerCase().split(/[-_]/)[0])
+      .filter((l) => /^[a-z]{2,3}$/.test(l));
     for (const code of [...wanted, "en"]) {
       const r = await fetch(`/assets/lang/${code}.json`).catch(() => null);
       if (r && r.ok) {
