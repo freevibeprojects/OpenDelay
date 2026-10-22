@@ -254,11 +254,21 @@ fn phase_name(p: Phase) -> &'static str {
 impl App {
     pub fn new(opts: AppOptions) -> Arc<App> {
         let settings_path = opts.config_dir.map(|d| d.join("settings.json"));
-        let s = settings_path.as_deref().map(Settings::load).unwrap_or_default();
+        let mut s = settings_path.as_deref().map(Settings::load).unwrap_or_default();
+        let new_lan_key = s.lan_key.len() < 16;
+        if new_lan_key {
+            s.lan_key = random_token()[..16].to_owned();
+        }
         let log_dir = opts.data_dir.map(|d| d.join("logs"));
         let relay = Relay::new(
             effective_routes(&s),
-            RelayOptions { delay: delay_config(&s), log_dir: log_dir.clone(), tls: opts.tls, ..Default::default() },
+            RelayOptions {
+                delay: delay_config(&s),
+                log_dir: log_dir.clone(),
+                tls: opts.tls,
+                lan_key: Some(s.lan_key.clone()),
+                ..Default::default()
+            },
         );
         let (save_soon, save_requests) = std::sync::mpsc::channel::<()>();
         let app = Arc::new(App {
@@ -279,6 +289,9 @@ impl App {
         });
         // Delay actions (UI thread, hotkeys, HTTP workers) must not wait for
         // the disk: their settings are written here, coalesced.
+        if new_lan_key {
+            let _ = app.save_soon.send(());
+        }
         let weak = Arc::downgrade(&app);
         std::thread::spawn(move || {
             while save_requests.recv().is_ok() {

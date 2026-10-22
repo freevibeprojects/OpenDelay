@@ -97,6 +97,8 @@ export global AppState {
     in property <string> listener-mode: "local";
     in property <bool> restart-required;
     in property <string> lan-addresses;
+    // Other computers add `?key=` with this to the server URL.
+    in property <string> lan-key;
     in property <string> twitch-server;
     in property <string> twitch-server-label;
     in property <[Choice]> twitch-servers;

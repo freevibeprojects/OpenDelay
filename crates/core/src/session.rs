@@ -178,6 +178,17 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     let (mut er, mut ew) = conn::split(io);
     er.set_max_message_size(PRE_PUBLISH_MAX_MESSAGE);
     let Ok(Some(connect)) = timeout_at(deadline, read_connect(&mut er, &mut ew)).await else { return };
+    // Checked before anything else (route lookup, session log): strangers on
+    // the network get no further than this.
+    if let Some(key) = &relay.lan_key
+        && !crate::relay::is_local(peer.ip())
+        && !has_lan_key(&connect.object, key)
+    {
+        let reason = "This computer needs OpenDelay's network access key: copy the server URL for other computers \
+                      from the Setup page in OpenDelay.";
+        let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", reason)).await;
+        return;
+    }
     let app = connect.object.get("app").and_then(Amf0::as_str).unwrap_or("");
     let route = match relay.route_for(&normalize_path(app)) {
         Ok(r) => r,
@@ -241,6 +252,18 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     sess.token.cancel();
     sess.log.finish();
     relay.remove_session(id);
+}
+
+/// Whether the `connect` object's `app` or `tcUrl` carries `?key=<key>`
+/// (encoders put the server URL's query in one or the other).
+fn has_lan_key(connect: &Amf0, key: &str) -> bool {
+    ["app", "tcUrl"].iter().filter_map(|k| connect.get(k).and_then(Amf0::as_str)).any(|url| {
+        url.split_once('?').is_some_and(|(_, query)| {
+            query.split('&').any(|p| {
+                p.strip_prefix("key=").is_some_and(|v| crate::api::constant_time_eq(v.as_bytes(), key.as_bytes()))
+            })
+        })
+    })
 }
 
 /// Read until the encoder's `connect` command.

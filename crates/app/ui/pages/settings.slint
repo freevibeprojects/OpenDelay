@@ -114,7 +114,7 @@ export component SettingsPage {
                 SettingRow {
                     title: @tr("Accept encoders from");
                     description: AppState.listener-mode == "lan"
-                        ? @tr("This computer and the local network ({}). Port 1935. Anyone on the network can then stream through OpenDelay with their own stream key.", AppState.lan-addresses == "" ? @tr("no network address found") : AppState.lan-addresses)
+                        ? @tr("This computer and the local network ({}). Port 1935. Other computers need the access key shown on the Setup page.", AppState.lan-addresses == "" ? @tr("no network address found") : AppState.lan-addresses)
                         : @tr("This computer only (127.0.0.1). Port 1935.");
                     Segmented {
                         label: @tr("Accept encoders from");

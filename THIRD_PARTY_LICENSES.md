@@ -19,9 +19,10 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | ahash | 0.8.12 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/ahash |
 | aho-corasick | 1.1.5 | Unlicense OR MIT | https://github.com/BurntSushi/aho-corasick |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/zakarumych/allocator-api2 |
-| annotate-snippets | 0.12.16 | MIT OR Apache-2.0 | https://github.com/rust-lang/annotate-snippets-rs |
+| annotate-snippets | 0.12.17 | MIT OR Apache-2.0 | https://github.com/rust-lang/annotate-snippets-rs |
 | anstyle | 1.0.14 | MIT OR Apache-2.0 | https://github.com/rust-cli/anstyle.git |
-| arboard | 3.6.1 | MIT OR Apache-2.0 | https://github.com/1Password/arboard |
+| arboard | 3.7.0 | MIT OR Apache-2.0 | https://github.com/1Password/arboard |
+| arc-swap | 1.9.3 | MIT OR Apache-2.0 | https://github.com/vorner/arc-swap |
 | arrayref | 0.3.9 | BSD-2-Clause | https://github.com/droundy/arrayref |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | https://github.com/bluss/arrayvec |
 | as-raw-xcb-connection | 1.0.1 | MIT OR Apache-2.0 | https://github.com/psychon/as-raw-xcb-connection |
@@ -61,7 +62,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | calloop | 0.13.0 | MIT | https://github.com/Smithay/calloop |
 | calloop | 0.14.5 | MIT | https://github.com/Smithay/calloop |
 | calloop-wayland-source | 0.3.0 | MIT | https://github.com/smithay/calloop-wayland-source |
-| cc | 1.8.0 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
+| cc | 1.9.0 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | cexpr | 0.6.0 | Apache-2.0/MIT | https://github.com/jethrogb/rust-cexpr |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
 | cfg_aliases | 0.2.2 | MIT | https://github.com/katharostech/cfg_aliases |
@@ -77,9 +78,10 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | convert_case | 0.10.0 | MIT | https://github.com/rutrum/convert-case |
 | countme | 3.0.1 | MIT OR Apache-2.0 | https://github.com/matklad/countme |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
-| crc32fast | 1.5.2 | MIT OR Apache-2.0 | https://github.com/srijs/rust-crc32fast |
+| crc32fast | 1.5.3 | MIT OR Apache-2.0 | https://github.com/srijs/rust-crc32fast |
 | critical-section | 1.2.0 | MIT OR Apache-2.0 | https://github.com/rust-embedded/critical-section |
 | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
+| crossbeam-queue | 0.3.14 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 | https://github.com/crossbeam-rs/crossbeam |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | ctor | 0.10.1 | Apache-2.0 OR MIT | https://github.com/mmastrac/rust-ctor |
@@ -114,7 +116,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | femtovg | 0.27.0 | MIT OR Apache-2.0 | https://github.com/femtovg/femtovg |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 | https://github.com/Diggsey/rust-field-offset |
 | filetime | 0.2.29 | MIT/Apache-2.0 | https://github.com/alexcrichton/filetime |
-| find-msvc-tools | 0.1.14 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
+| find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | fixed_decimal | 0.7.2 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | fixedbitset | 0.5.7 | MIT OR Apache-2.0 | https://github.com/petgraph/fixedbitset |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
@@ -122,7 +124,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | fnv | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | foldhash | 0.1.5 | Zlib | https://github.com/orlp/foldhash |
 | foldhash | 0.2.0 | Zlib | https://github.com/orlp/foldhash |
-| font-types | 0.12.6 | MIT OR Apache-2.0 | https://github.com/googlefonts/fontations |
+| font-types | 0.12.7 | MIT OR Apache-2.0 | https://github.com/googlefonts/fontations |
 | fontdb | 0.24.0 | MIT | https://github.com/RazrFalcon/fontdb |
 | fontique | 0.11.1 | Apache-2.0 OR MIT | https://github.com/linebender/parley |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
@@ -212,10 +214,10 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | jobserver | 0.1.35 | MIT OR Apache-2.0 | https://github.com/rust-lang/jobserver-rs |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 | https://github.com/pyfisch/keyboard-types |
 | khronos_api | 3.1.0 | Apache-2.0 | https://github.com/brendanzab/gl-rs/ |
-| ksni | 0.3.6 | Unlicense | https://github.com/iovxw/ksni |
+| ksni | 0.3.7 | Unlicense | https://github.com/iovxw/ksni |
 | kurbo | 0.13.1 | Apache-2.0 OR MIT | https://github.com/linebender/kurbo |
 | lazy_static | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
-| libc | 0.2.190 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
+| libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | libloading | 0.8.9 | ISC | https://github.com/nagisa/rust_libloading/ |
 | libm | 0.2.16 | MIT | https://github.com/rust-lang/compiler-builtins |
 | linebender_resource_handle | 0.1.1 | Apache-2.0 OR MIT | https://github.com/linebender/raw_resource_handle |
@@ -226,13 +228,13 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | litrs | 1.0.1 | MIT OR Apache-2.0 | https://github.com/LukasKalbertodt/litrs |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | log | 0.4.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
-| lyon_algorithms | 1.0.21 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
+| lyon_algorithms | 1.0.22 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
 | lyon_extra | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
-| lyon_geom | 1.0.19 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
+| lyon_geom | 1.0.20 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
 | lyon_path | 1.0.19 | MIT OR Apache-2.0 | https://github.com/nical/lyon |
 | matchit | 0.8.4 | MIT AND BSD-3-Clause | https://github.com/ibraheemdev/matchit |
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
-| memmap2 | 0.9.11 | MIT OR Apache-2.0 | https://github.com/RazrFalcon/memmap2-rs |
+| memmap2 | 0.9.12 | MIT OR Apache-2.0 | https://github.com/RazrFalcon/memmap2-rs |
 | memoffset | 0.9.1 | MIT | https://github.com/Gilnaa/memoffset |
 | mime | 0.3.17 | MIT OR Apache-2.0 | https://github.com/hyperium/mime |
 | minimal-lexical | 0.2.1 | MIT/Apache-2.0 | https://github.com/Alexhuszagh/minimal-lexical |
@@ -288,7 +290,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | proc-macro-crate | 3.5.0 | MIT OR Apache-2.0 | https://github.com/bkchr/proc-macro-crate |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
 | profiling | 1.0.18 | MIT OR Apache-2.0 | https://github.com/aclysma/profiling |
-| pulldown-cmark | 0.13.4 | MIT | https://github.com/raphlinus/pulldown-cmark |
+| pulldown-cmark | 0.13.5 | MIT | https://github.com/raphlinus/pulldown-cmark |
 | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 | https://github.com/awxkee/pxfm |
 | quick-error | 2.0.1 | MIT/Apache-2.0 | http://github.com/tailhook/quick-error |
 | quick-xml | 0.41.0 | MIT | https://github.com/tafia/quick-xml |
@@ -319,7 +321,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
 | rustls-webpki | 0.103.16 | ISC | https://github.com/rustls/webpki |
 | rustversion | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
-| schannel | 0.1.29 | MIT | https://github.com/steffengy/schannel-rs |
+| schannel | 0.1.30 | MIT | https://github.com/steffengy/schannel-rs |
 | scoped-tls | 1.0.1 | MIT/Apache-2.0 | https://github.com/alexcrichton/scoped-tls |
 | scoped-tls-hkt | 0.1.5 | MIT/Apache-2.0 | https://github.com/Diggsey/scoped-tls-hkt |
 | scopeguard | 1.2.0 | MIT OR Apache-2.0 | https://github.com/bluss/scopeguard |
@@ -350,7 +352,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | smallvec | 1.16.3 | MIT OR Apache-2.0 | https://github.com/servo/rust-smallvec |
 | smithay-client-toolkit | 0.19.2 | MIT | https://github.com/smithay/client-toolkit |
 | smol_str | 0.2.2 | MIT OR Apache-2.0 | https://github.com/rust-analyzer/smol_str |
-| smol_str | 0.3.6 | MIT OR Apache-2.0 | https://github.com/rust-lang/rust-analyzer/tree/master/lib/smol_str |
+| smol_str | 0.3.7 | MIT OR Apache-2.0 | https://github.com/rust-lang/rust-analyzer/tree/master/lib/smol_str |
 | snafu | 0.8.9 | MIT OR Apache-2.0 | https://github.com/shepmaster/snafu |
 | snafu-derive | 0.8.9 | MIT OR Apache-2.0 | https://github.com/shepmaster/snafu |
 | socket2 | 0.6.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/socket2 |
@@ -385,7 +387,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | tiny-xlib | 0.2.5 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/tiny-xlib |
 | tinystr | 0.8.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT | https://github.com/Lokathor/tinyvec |
-| tokio | 1.53.3 | MIT | https://github.com/tokio-rs/tokio |
+| tokio | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
 | tokio-macros | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
 | tokio-rustls | 0.26.6 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
 | tokio-tungstenite | 0.29.0 | MIT | https://github.com/snapview/tokio-tungstenite |
@@ -417,8 +419,8 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-xid |
 | untrusted | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
 | unty | 0.0.4 | MIT OR Apache-2.0 | https://github.com/bincode-org/unty |
-| ureq | 3.4.2 | MIT OR Apache-2.0 | https://github.com/algesten/ureq |
-| ureq-proto | 0.6.4 | MIT OR Apache-2.0 | https://github.com/algesten/ureq-proto |
+| ureq | 3.5.0 | MIT OR Apache-2.0 | https://github.com/algesten/ureq |
+| ureq-proto | 0.6.5 | MIT OR Apache-2.0 | https://github.com/algesten/ureq-proto |
 | url | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | usvg | 0.48.1 | Apache-2.0 OR MIT | https://github.com/linebender/resvg |
 | utf8-zero | 0.8.1 | MIT OR Apache-2.0 | https://github.com/algesten/utf8-zero |
@@ -482,7 +484,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | zbus-lockstep | 0.5.2 | MIT | https://github.com/luukvanderduim/zbus-lockstep |
 | zbus-lockstep-macros | 0.5.2 | MIT | https://github.com/luukvanderduim/zbus-lockstep |
 | zbus_macros | 5.19.0 | MIT | https://github.com/z-galaxy/zbus/ |
-| zbus_names | 4.3.4 | MIT | https://github.com/z-galaxy/zbus/ |
+| zbus_names | 4.3.5 | MIT | https://github.com/z-galaxy/zbus/ |
 | zbus_xml | 5.2.1 | MIT | https://github.com/z-galaxy/zbus/ |
 | zcheapstr | 1.1.0 | MIT | https://github.com/z-galaxy/zcheapstr/ |
 | zeno | 0.3.3 | Apache-2.0 OR MIT | https://github.com/dfrg/zeno |
@@ -498,6 +500,6 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | zmij | 1.0.23 | MIT | https://github.com/dtolnay/zmij |
 | zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib | https://github.com/etemesi254/zune-image |
 | zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib | https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg |
-| zvariant | 5.15.0 | MIT | https://github.com/z-galaxy/zbus/ |
-| zvariant_derive | 5.15.0 | MIT | https://github.com/z-galaxy/zbus/ |
+| zvariant | 5.15.1 | MIT | https://github.com/z-galaxy/zbus/ |
+| zvariant_derive | 5.15.1 | MIT | https://github.com/z-galaxy/zbus/ |
 | zvariant_utils | 4.2.0 | MIT | https://github.com/z-galaxy/zbus/ |

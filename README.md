@@ -102,6 +102,9 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
 - Settings live in `%APPDATA%\OpenDelay` / `~/.config/opendelay`, session logs
   in `%LOCALAPPDATA%\OpenDelay\logs` / `~/.local/share/opendelay/logs`
   (override with `OPENDELAY_CONFIG_DIR` / `OPENDELAY_DATA_DIR`).
+- **LAN mode** (Settings → Network) lets an encoder on another computer
+  publish to `rtmp://<this computer>:1935/<route>?key=<key>`; the key is on the
+  Setup page, and connections from other computers without it are refused.
 - The RTMP listener uses port 1935 and the local web server port 3000; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
 - **Encoder settings**: pointing OBS at OpenDelay means choosing the

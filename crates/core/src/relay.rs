@@ -50,7 +50,7 @@ pub const MAX_PER_REMOTE_ADDRESS: usize = 4;
 pub const NEGOTIATE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Encoders on this computer (other addresses, even 127.0.0.2, count as remote).
-fn is_local(ip: IpAddr) -> bool {
+pub(crate) fn is_local(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4 == std::net::Ipv4Addr::LOCALHOST,
         IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped() == Some(std::net::Ipv4Addr::LOCALHOST),
@@ -100,11 +100,20 @@ pub struct RelayOptions {
     pub tls: Option<Arc<ClientConfig>>,
     /// Deadline from accepting a connection to its `publish` (tests shorten it).
     pub negotiate_timeout: Duration,
+    /// Key that encoders on other computers must give as `?key=` in the server
+    /// URL (`None`: no key needed).
+    pub lan_key: Option<String>,
 }
 
 impl Default for RelayOptions {
     fn default() -> Self {
-        RelayOptions { delay: DelayConfig::default(), log_dir: None, tls: None, negotiate_timeout: NEGOTIATE_TIMEOUT }
+        RelayOptions {
+            delay: DelayConfig::default(),
+            log_dir: None,
+            tls: None,
+            negotiate_timeout: NEGOTIATE_TIMEOUT,
+            lan_key: None,
+        }
     }
 }
 
@@ -122,6 +131,7 @@ pub(crate) struct Shared {
     /// Bytes held by all stream buffers together.
     buffered: Arc<AtomicU64>,
     pub negotiate_timeout: Duration,
+    pub lan_key: Option<String>,
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
@@ -251,6 +261,7 @@ impl Relay {
                 connections: Mutex::new(Connections::default()),
                 buffered: Arc::new(AtomicU64::new(0)),
                 negotiate_timeout: opts.negotiate_timeout,
+                lan_key: opts.lan_key,
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,

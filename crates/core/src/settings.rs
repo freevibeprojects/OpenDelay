@@ -58,6 +58,8 @@ pub struct Settings {
     pub delay_secs: u32,
     pub listener_mode: ListenerMode,
     pub twitch_server: String,
+    /// Access key other computers add to the server URL (`?key=`) in LAN mode.
+    pub lan_key: String,
     /// UI language code; empty = follow the system.
     pub language: String,
     pub update_check: bool,
@@ -85,6 +87,7 @@ impl Default for Settings {
             delay_secs: 30,
             listener_mode: ListenerMode::Local,
             twitch_server: TWITCH_AUTO.into(),
+            lan_key: String::new(),
             language: String::new(),
             update_check: false,
             hotkeys: Hotkeys::default(),
