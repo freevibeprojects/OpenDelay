@@ -639,6 +639,15 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         }
         u.refresh();
     }));
+    s.on_new_lan_key(with_ui!(|u| {
+        match u.app.new_lan_key() {
+            Ok(key) => {
+                u.state().set_lan_key(ss(&key));
+                u.state().invoke_report(ss("lan-key"), true, ss(""), ss(""));
+            }
+            Err(p) => u.state().invoke_toast(u.problem(&p), ss("error")),
+        }
+    }));
     s.on_set_twitch_server(with_ui!(|u, url| {
         if let Err(p) = u.app.set_twitch_server(&url) {
             u.state().invoke_toast(u.problem(&p), ss("error"));

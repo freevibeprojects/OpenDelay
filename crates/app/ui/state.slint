@@ -141,6 +141,7 @@ export global AppState {
     callback set-reduce-motion(bool);
     callback set-background-animation(bool);
     callback set-listener-mode(string);
+    callback new-lan-key();
     callback set-twitch-server(string);
     callback refresh-twitch-servers();
     // the Twitch server list is opened: fetch it once (no request at startup)
@@ -230,6 +231,7 @@ export global Strings {
         if (action == "allow") { return @tr("Streaming allowed again"); }
         if (action == "log-saved") { return @tr("Log saved to your Downloads folder"); }
         if (action == "twitch-list") { return @tr("Twitch server list updated"); }
+        if (action == "lan-key") { return @tr("New network access key. Other computers need the new key from now on."); }
         if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
         @tr("Saved")
     }

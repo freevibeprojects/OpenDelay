@@ -625,6 +625,18 @@ impl App {
         })
     }
 
+    /// Replace the LAN access key (e.g. after it was shared too widely).
+    /// Streams already connected keep running; new connections need the new key.
+    pub fn new_lan_key(&self) -> Result<String, Problem> {
+        let key = random_token()[..16].to_owned();
+        self.update_settings(|s| {
+            s.lan_key = key.clone();
+            Ok(())
+        })?;
+        self.relay.set_lan_key(Some(key.clone()));
+        Ok(key)
+    }
+
     pub fn set_twitch_server(&self, url: &str) -> Result<(), Problem> {
         routes::validate_twitch_server(url)?;
         self.update_settings(|s| {

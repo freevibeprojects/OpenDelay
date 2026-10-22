@@ -265,7 +265,8 @@ Each entry: the decision, then why.
   pass that query in `app` and `tcUrl`, where it is checked (constant time)
   before the route lookup, the platform connection and the session log. The
   key is 16 random hex digits created once per installation, kept in the
-  settings and shown on the Setup page; this computer (127.0.0.1, ::1) needs
+  settings and shown on the Setup page, where "New key" replaces it at once
+  for new connections (connected streams keep running); this computer (127.0.0.1, ::1) needs
   none. Without it, LAN mode was an open relay for anyone on the network,
   who could also take a route before the user's encoder or push the user's
   session logs out of rotation. The query never reaches the platform (`app`,
