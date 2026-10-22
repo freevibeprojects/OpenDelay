@@ -131,7 +131,7 @@ pub(crate) struct Shared {
     /// Bytes held by all stream buffers together.
     buffered: Arc<AtomicU64>,
     pub negotiate_timeout: Duration,
-    pub lan_key: Option<String>,
+    lan_key: RwLock<Option<String>>,
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
@@ -150,6 +150,10 @@ impl Shared {
             Some(r) => Err(format!("The route \"{}\" is disabled in OpenDelay.", r.name)),
             None => Err(format!("OpenDelay has no route \"/{path}\". Check the server URL in your encoder.")),
         }
+    }
+
+    pub fn lan_key(&self) -> Option<String> {
+        self.lan_key.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn new_engine(&self) -> Engine {
@@ -261,7 +265,7 @@ impl Relay {
                 connections: Mutex::new(Connections::default()),
                 buffered: Arc::new(AtomicU64::new(0)),
                 negotiate_timeout: opts.negotiate_timeout,
-                lan_key: opts.lan_key,
+                lan_key: RwLock::new(opts.lan_key),
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,
@@ -325,6 +329,11 @@ impl Relay {
             s.log.event("Emergency stop");
             s.token.cancel();
         }
+    }
+
+    /// Replace the LAN access key; streams already connected keep running.
+    pub fn set_lan_key(&self, key: Option<String>) {
+        *self.shared.lan_key.write().unwrap_or_else(|e| e.into_inner()) = key;
     }
 
     pub fn clear_emergency(&self) {

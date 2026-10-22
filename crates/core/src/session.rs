@@ -180,9 +180,9 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     let Ok(Some(connect)) = timeout_at(deadline, read_connect(&mut er, &mut ew)).await else { return };
     // Checked before anything else (route lookup, session log): strangers on
     // the network get no further than this.
-    if let Some(key) = &relay.lan_key
+    if let Some(key) = relay.lan_key()
         && !crate::relay::is_local(peer.ip())
-        && !has_lan_key(&connect.object, key)
+        && !has_lan_key(&connect.object, &key)
     {
         let reason = "This computer needs OpenDelay's network access key: copy the server URL for other computers \
                       from the Setup page in OpenDelay.";

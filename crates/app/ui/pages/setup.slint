@@ -337,10 +337,17 @@ export component SetupPage {
                 if AppState.listener-mode == "lan" && AppState.lan-addresses != "": Body {
                     text: @tr("From another computer on your network, replace 127.0.0.1 with {} and add ?key={} to the end of the server URL. OpenDelay refuses other computers without this key.", AppState.lan-addresses, AppState.lan-key);
                 }
-                if AppState.listener-mode == "lan": CopyField {
-                    value: "?key=" + AppState.lan-key;
-                    label: @tr("Network access key");
-                    copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                if AppState.listener-mode == "lan": HorizontalLayout {
+                    spacing: 12px;
+                    CopyField {
+                        value: "?key=" + AppState.lan-key;
+                        label: @tr("Network access key");
+                        copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                    }
+                    Button {
+                        text: @tr("New key");
+                        clicked => { AppState.new-lan-key(); }
+                    }
                 }
             }
         }

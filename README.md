@@ -105,6 +105,7 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
 - **LAN mode** (Settings → Network) lets an encoder on another computer
   publish to `rtmp://<this computer>:1935/<route>?key=<key>`; the key is on the
   Setup page, and connections from other computers without it are refused.
+  "New key" there replaces it; streams already connected keep running.
 - The RTMP listener uses port 1935 and the local web server port 3000; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
 - **Encoder settings**: pointing OBS at OpenDelay means choosing the

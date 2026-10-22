@@ -296,6 +296,13 @@ async fn other_computers_need_the_lan_key() {
     // This computer needs no key.
     let (_local, reply) = Encoder::connect(addr, "t").await;
     assert_eq!(reply.name, "_result");
+
+    // A new key replaces the old one for new connections.
+    relay.set_lan_key(Some("fedcba9876543210".into()));
+    let (_old, reply) = Encoder::connect_from(addr, "t?key=0123456789abcdef", "127.0.0.2").await;
+    assert_eq!(reply.name, "_error");
+    let (_new, reply) = Encoder::connect_from(addr, "t?key=fedcba9876543210", "127.0.0.3").await;
+    assert_eq!(reply.name, "_result");
 }
 
 #[tokio::test]
