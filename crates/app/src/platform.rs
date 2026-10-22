@@ -5,8 +5,13 @@ use std::process::Command;
 
 /// Open a URL, file or folder with the system's default handler.
 pub fn open(target: &str) {
+    // By full path: Windows would also look in this executable's own folder.
     #[cfg(windows)]
-    let result = Command::new("explorer.exe").arg(target).spawn();
+    let result = Command::new(
+        std::env::var_os("SystemRoot").map_or("C:\\Windows".into(), std::path::PathBuf::from).join("explorer.exe"),
+    )
+    .arg(target)
+    .spawn();
     #[cfg(not(windows))]
     let result = Command::new("xdg-open").arg(target).spawn();
     match result {

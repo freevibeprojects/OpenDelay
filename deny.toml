@@ -48,4 +48,10 @@ ignore = [
     # ttf-parser is unmaintained; it is pulled in by Slint's font stack and has
     # no maintained drop-in replacement there yet. Not a vulnerability.
     "RUSTSEC-2026-0192",
+    # zvariant, zvariant_derive and zbus_names were merged into zbus 6; Slint's
+    # tray and accessibility stack (and so this app) still use zbus 5 on Linux.
+    # Unmaintained notices, not vulnerabilities.
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
 ]

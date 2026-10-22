@@ -317,7 +317,7 @@ Regenerate with `python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | rustls-native-certs | 0.8.5 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls-native-certs |
 | rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
-| rustls-webpki | 0.103.15 | ISC | https://github.com/rustls/webpki |
+| rustls-webpki | 0.103.16 | ISC | https://github.com/rustls/webpki |
 | rustversion | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | schannel | 0.1.29 | MIT | https://github.com/steffengy/schannel-rs |
 | scoped-tls | 1.0.1 | MIT/Apache-2.0 | https://github.com/alexcrichton/scoped-tls |

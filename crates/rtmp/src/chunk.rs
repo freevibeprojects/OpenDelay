@@ -20,6 +20,9 @@ const MAX_CHUNK_SIZE: u32 = 0x00FF_FFFF;
 const EXTENDED: u32 = 0x00FF_FFFF;
 /// Bound on distinct chunk stream ids a peer may use (memory safety).
 const MAX_CHUNK_STREAMS: usize = 64;
+/// Bound on the declared size of all unfinished messages together: without
+/// it a peer could keep a maximum-size message open on every chunk stream.
+const MAX_UNFINISHED_BYTES: u64 = 2 * MAX_CHUNK_SIZE as u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkError(pub &'static str);
@@ -141,6 +144,12 @@ impl ChunkReader {
         let h = &b[p..p + hdr_len];
         p += hdr_len;
 
+        let unfinished: u64 = self
+            .streams
+            .iter()
+            .filter(|(id, s)| **id != csid && s.partial.is_some())
+            .map(|(_, s)| s.length as u64)
+            .sum();
         if !self.streams.contains_key(&csid) {
             if fmt != 0 {
                 return Err(ChunkError("first chunk on a chunk stream must use format 0"));
@@ -184,6 +193,9 @@ impl ChunkReader {
         let starts = fmt < 3 || st.partial.is_none();
         if starts && length > self.max_message {
             return Err(ChunkError("message too large"));
+        }
+        if starts && unfinished + length as u64 > MAX_UNFINISHED_BYTES {
+            return Err(ChunkError("too many unfinished messages"));
         }
         let have = if starts { 0 } else { st.partial.as_ref().map_or(0, Vec::len) as u32 };
         let n = (length - have).min(self.chunk_size) as usize;
@@ -484,6 +496,18 @@ mod tests {
         r.set_max_message_size(4000);
         r.feed(&out);
         assert_eq!(r.next_message().unwrap().unwrap().payload.len(), 2000);
+    }
+
+    #[test]
+    fn unfinished_messages_are_bounded() {
+        // Maximum-size messages opened on three chunk streams, first chunk only.
+        let mut r = ChunkReader::new();
+        for csid in 4..=6u8 {
+            let mut b = vec![csid, 0, 0, 0, 0xFF, 0xFF, 0xFF, msg_type::VIDEO, 1, 0, 0, 0];
+            b.extend_from_slice(&[0; DEFAULT_CHUNK_SIZE as usize]);
+            r.feed(&b);
+        }
+        assert_eq!(r.next_message(), Err(ChunkError("too many unfinished messages")));
     }
 
     #[test]
