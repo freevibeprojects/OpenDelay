@@ -49,6 +49,7 @@ fn main() {
 /// Embed `assets/logo.ico` as the executable's icon: write a compiled
 /// resource (.res) file by hand and hand it to the linker (link.exe and
 /// lld-link both accept .res inputs), so no resource compiler is needed.
+/// GNU ld does not: MinGW builds convert it with binutils' `windres`.
 fn windows_icon() {
     let ico_path = "../../assets/logo.ico";
     println!("cargo:rerun-if-changed={ico_path}");
@@ -90,5 +91,23 @@ fn windows_icon() {
     entry(&mut res, 14, 1, 0x1030, &group); // RT_GROUP_ICON
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("opendelay.res");
     std::fs::write(&out, res).unwrap();
-    println!("cargo:rustc-link-arg-bins={}", out.display());
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() != Ok("gnu") {
+        println!("cargo:rustc-link-arg-bins={}", out.display());
+        return;
+    }
+    let obj = out.with_extension("o");
+    let converted = ["x86_64-w64-mingw32-windres", "windres"].iter().any(|tool| {
+        std::process::Command::new(tool)
+            .args(["--input-format=res", "--output-format=coff", "-i"])
+            .arg(&out)
+            .arg("-o")
+            .arg(&obj)
+            .status()
+            .is_ok_and(|s| s.success())
+    });
+    if converted {
+        println!("cargo:rustc-link-arg-bins={}", obj.display());
+    } else {
+        println!("cargo:warning=windres not found: the executable gets no icon");
+    }
 }

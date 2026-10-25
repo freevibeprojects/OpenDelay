@@ -60,6 +60,11 @@ Native: install the Rust MSVC toolchain and the Visual Studio Build Tools
 ("Desktop development with C++"), then run `cargo build --release`. The binary
 is `target\release\opendelay.exe`.
 
+The GNU toolchain (`x86_64-pc-windows-gnu`, e.g. with MSYS2's MinGW-w64) also
+builds; it needs `windres` on the `PATH` for the executable's icon. Release
+builds should use MSVC: only its linker can make Windows load the program's
+DLL imports from System32 alone.
+
 Cross-compiling from Linux with [cargo-xwin](https://github.com/rust-cross/cargo-xwin)
 (it downloads the MSVC CRT and Windows SDK on first use, which means accepting
 Microsoft's licence terms):
@@ -106,6 +111,8 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
   publish to `rtmp://<this computer>:1935/<route>?key=<key>`; the key is on the
   Setup page, and connections from other computers without it are refused.
   "New key" there replaces it; streams already connected keep running.
+  On Windows, allow OpenDelay through Windows Defender Firewall when it asks
+  after the restart (for the network type the other computer is on).
 - The RTMP listener uses port 1935 and the local web server port 3000; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
 - **Encoder settings**: pointing OBS at OpenDelay means choosing the

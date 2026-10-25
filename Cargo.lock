@@ -3313,6 +3313,7 @@ dependencies = [
  "slint-build",
  "sys-locale",
  "tokio",
+ "windows-sys 0.61.2",
  "winreg",
  "zbus",
 ]

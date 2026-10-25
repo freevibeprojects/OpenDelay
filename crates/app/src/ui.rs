@@ -379,7 +379,7 @@ impl Ui {
         self.refresh();
     }
 
-    /// Hidden in the tray: only the tray icon shows the state.
+    /// Hidden in the tray or minimized: only the tray icon shows the state.
     fn refresh_tray(&self) {
         if let Some(t) = &self.tray {
             t.set_delay_active(delay_active(&self.app.status()));
@@ -774,7 +774,8 @@ impl Ui {
                 u.on_hotkey(which);
             }
             let now = Instant::now();
-            if !u.window.window().is_visible() {
+            // A minimized window still renders every property change.
+            if !u.window.window().is_visible() || u.window.window().is_minimized() {
                 if now.duration_since(last.get()) >= Duration::from_secs(1) {
                     last.set(now);
                     u.refresh_tray();

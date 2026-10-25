@@ -29,9 +29,42 @@ pub fn system_language(available: &[(&str, &str)]) -> String {
     available.iter().find(|(code, _)| *code == base).map(|(code, _)| code.to_string()).unwrap_or_default()
 }
 
-/// The user's Downloads folder (XDG `user-dirs.dirs` on Linux).
+/// Load DLLs only from System32, never from this executable's folder (where a
+/// planted DLL could wait, e.g. Downloads): covers the GUI libraries'
+/// `LoadLibrary("uxtheme.dll")`-style calls, which the link-time
+/// `/DEPENDENTLOADFLAG` does not.
+#[cfg(windows)]
+pub fn restrict_dll_search() {
+    use windows_sys::Win32::System::LibraryLoader::{LOAD_LIBRARY_SEARCH_SYSTEM32, SetDefaultDllDirectories};
+    // SAFETY: plain Win32 call with a valid flag.
+    unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
+}
+
+/// The user's Downloads folder (XDG `user-dirs.dirs` on Linux, the known
+/// folder on Windows, which users can move).
 pub fn downloads_dir() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        use windows_sys::Win32::System::Com::CoTaskMemFree;
+        use windows_sys::Win32::UI::Shell::{FOLDERID_Downloads, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+        let mut p = std::ptr::null_mut();
+        // SAFETY: on success `p` is a NUL-terminated wide string the caller
+        // frees with CoTaskMemFree (also to be freed on failure).
+        unsafe {
+            let ok =
+                SHGetKnownFolderPath(&FOLDERID_Downloads, KF_FLAG_DEFAULT as u32, std::ptr::null_mut(), &mut p) == 0;
+            let path = ok.then(|| {
+                let len = (0..).take_while(|&i| *p.add(i) != 0).count();
+                PathBuf::from(std::ffi::OsString::from_wide(std::slice::from_raw_parts(p, len)))
+            });
+            CoTaskMemFree(p.cast());
+            if path.is_some() {
+                return path;
+            }
+        }
+    }
     let home = PathBuf::from(std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })?);
     if !cfg!(windows) {
         let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
@@ -88,4 +121,13 @@ pub fn activate_running_instance(port: u16) -> bool {
         "POST /api/window/show HTTP/1.1\r\nHost: {host}\r\nX-OpenDelay-Token: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     ))
     .is_some_and(|r| r.starts_with("HTTP/1.1 200"))
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    #[test]
+    fn downloads_known_folder() {
+        let dir = super::downloads_dir().unwrap();
+        assert!(dir.is_absolute() && dir.is_dir(), "{dir:?}");
+    }
 }

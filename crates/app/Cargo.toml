@@ -31,6 +31,7 @@ zbus = "5"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+windows-sys = { version = "0.61", features = ["Win32_System_Com", "Win32_System_LibraryLoader", "Win32_UI_Shell"] }
 
 [build-dependencies]
 # No compile-time software-renderer resources (the app renders with OpenGL).

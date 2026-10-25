@@ -62,6 +62,8 @@ fn retry<T, E>(retrying: bool, mut f: impl FnMut() -> Result<T, E>) -> Result<T,
 }
 
 fn main() {
+    #[cfg(windows)]
+    platform::restrict_dll_search();
     let relaunched = std::env::args().any(|a| a == SOFTWARE_FLAG);
     if relaunched || software_marker().is_some_and(|m| m.exists()) {
         let selected =

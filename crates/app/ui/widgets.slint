@@ -404,7 +404,9 @@ export component ProgressBar {
             width: parent.width * clamp(root.value, 0, 1);
             border-radius: parent.border-radius;
             background: root.color;
-            animate width { duration: Theme.normal; easing: ease-out; }
+            // Stepped, not animated: the buffer bar changes every second while
+            // streaming, and a tweened width repaints the window at display
+            // rate a quarter of the time.
             animate background { duration: Theme.normal; }
         }
     }
