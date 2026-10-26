@@ -35,6 +35,10 @@ use std::time::{Duration, Instant};
 const MAX_GOP: Duration = Duration::from_secs(30);
 /// The keyframe chosen for an instant switch is at least this much older than the delay.
 pub const SAFETY_MARGIN: Duration = Duration::from_millis(200);
+/// A switch lands on a keyframe that has just reached the delay (within this
+/// window, longer than the gap between polls), so viewers are set back by
+/// the delay and not up to a keyframe interval more.
+const CATCH_WINDOW: Duration = Duration::from_millis(250);
 /// Delay changes smaller than this while delayed only retarget, without a jump.
 const RETARGET_TOLERANCE: Duration = Duration::from_millis(500);
 /// Memory cap for one stream's buffer.
@@ -70,7 +74,6 @@ pub enum Refusal {
     /// Detail code: `go_live_first`, `buffer_below_delay`.
     InvalidInMode(&'static str),
     TransitionInProgress,
-    UpstreamRecovering,
     Unsustainable {
         max_secs: u32,
     },
@@ -90,7 +93,6 @@ impl Refusal {
             Refusal::DelayModeOff => "delay_mode_off",
             Refusal::InvalidInMode(_) => "invalid_in_mode",
             Refusal::TransitionInProgress => "transition_in_progress",
-            Refusal::UpstreamRecovering => "upstream_recovering",
             Refusal::Unsustainable { .. } => "unsustainable",
             Refusal::TransportError => "transport_error",
             Refusal::InvalidValue(_) => "invalid_value",
@@ -129,7 +131,6 @@ impl fmt::Display for Refusal {
             Refusal::DelayModeOff => f.write_str("Delay mode is turned off."),
             Refusal::InvalidInMode(d) | Refusal::InvalidValue(d) => f.write_str(detail_text(d)),
             Refusal::TransitionInProgress => f.write_str("Another transition is still in progress."),
-            Refusal::UpstreamRecovering => f.write_str("The upstream connection is recovering."),
             Refusal::Unsustainable { max_secs } => {
                 write!(f, "This delay cannot be sustained at the current bitrate (about {max_secs} s fit in memory).")
             }
@@ -178,8 +179,11 @@ pub struct EngineStatus {
 pub enum Enabled {
     /// Jumped back: viewers now see delayed content.
     Instant,
-    /// Jumped back as far as the buffer reaches; the full delay follows once it
-    /// reaches further. `buffer_grown` when the buffer was enlarged to fit the delay.
+    /// Jumps back when the next keyframe reaches the delay (within one
+    /// keyframe interval).
+    NextKeyframe,
+    /// Jumps back once the buffer reaches back far enough; until then viewers
+    /// stay live. `buffer_grown` when the buffer was enlarged to fit the delay.
     Building { buffer_grown: bool },
 }
 
@@ -462,9 +466,11 @@ impl Engine {
         }
     }
 
-    /// Latest keyframe at least `delay + SAFETY_MARGIN` old.
-    fn key_at_least(&self, delay: Duration, now: Instant) -> Option<u64> {
-        self.keys.iter().rev().copied().find(|&k| self.age(k, now) >= delay + SAFETY_MARGIN)
+    /// Keyframe from entry `from` on that has just become `delay + SAFETY_MARGIN` old.
+    fn key_reaching(&self, delay: Duration, from: u64, now: Instant) -> Option<u64> {
+        let min = delay + SAFETY_MARGIN;
+        let k = self.keys.iter().rev().copied().take_while(|&k| k >= from).find(|&k| self.age(k, now) >= min)?;
+        (self.age(k, now) < min + CATCH_WINDOW).then_some(k)
     }
 
     fn fill_pct(&self, now: Instant, of: Duration) -> u8 {
@@ -472,8 +478,8 @@ impl Engine {
         (fill.as_secs_f64() / of.as_secs_f64().max(0.001) * 100.0).min(100.0) as u8
     }
 
-    /// Switch the delay on (SPEC §4.2): jump back to a keyframe `delay` old,
-    /// or as far back as the buffer reaches and grow from there.
+    /// Switch the delay on (SPEC §4.2): jump back `delay` when a keyframe
+    /// reaches that age; viewers stay live until then.
     pub fn enable(&mut self, delay: Duration, now: Instant) -> Result<Enabled, Refusal> {
         match self.mode {
             Mode::Live => {}
@@ -491,19 +497,14 @@ impl Engine {
         }
         let buffer_grown = delay > self.retain;
         self.retain = self.retain.max(delay);
-        if let Some(k) = self.key_at_least(delay, now) {
-            self.mode = Mode::Delayed { delay: self.age(k, now), target: delay };
-            self.start_at(k);
-            return Ok(Enabled::Instant);
-        }
-        // Not that much buffered yet: replay all there is now (viewers stop
-        // seeing new content at once), the rest follows in `retarget`.
-        let oldest = self.keys.front().copied().filter(|&k| k < self.cursor);
-        self.mode = Mode::Growing { delay: oldest.map_or(Duration::ZERO, |k| self.age(k, now)), target: delay };
-        if let Some(k) = oldest {
-            self.start_at(k);
-        }
-        Ok(Enabled::Building { buffer_grown })
+        self.mode = Mode::Growing { delay: Duration::ZERO, target: delay };
+        Ok(if self.retarget(now) {
+            Enabled::Instant
+        } else if self.keys.front().is_some_and(|&k| self.age(k, now) >= delay + SAFETY_MARGIN) {
+            Enabled::NextKeyframe
+        } else {
+            Enabled::Building { buffer_grown }
+        })
     }
 
     /// Return to live (SPEC §4.3): jump forward to the latest keyframe.
@@ -511,6 +512,10 @@ impl Engine {
         match self.mode {
             Mode::Live => Err(Refusal::AlreadyLive),
             Mode::Cutting { target, .. } if target.is_zero() => Err(Refusal::TransitionInProgress),
+            Mode::Growing { delay, .. } if delay.is_zero() => {
+                self.mode = Mode::Live; // never jumped back: still live
+                Ok(())
+            }
             _ => {
                 self.mode = Mode::Cutting { delay: self.delay().unwrap_or_default(), target: Duration::ZERO };
                 self.retarget(now);
@@ -545,17 +550,16 @@ impl Engine {
         Ok(())
     }
 
-    /// Growing / cutting: jump to the keyframe that reaches the target as soon
-    /// as there is one. Returns whether it jumped.
+    /// Growing / cutting: jump to a keyframe the moment it reaches the target
+    /// (going live: to the newest keyframe not sent yet). Returns whether it jumped.
     fn retarget(&mut self, now: Instant) -> bool {
         let (key, target) = match self.mode {
-            Mode::Growing { target, .. } => (self.key_at_least(target, now), target),
-            Mode::Cutting { target, .. } => {
-                let min_age = if target.is_zero() { Duration::ZERO } else { target + SAFETY_MARGIN };
-                // Forward only: keyframes not sent yet, newest first.
-                let mut ahead = self.keys.iter().rev().copied().take_while(|&k| k >= self.cursor);
-                (ahead.find(|&k| self.age(k, now) >= min_age), target)
+            Mode::Growing { target, .. } => (self.key_reaching(target, 0, now), target),
+            Mode::Cutting { target, .. } if target.is_zero() => {
+                (self.keys.back().copied().filter(|&k| k >= self.cursor), target)
             }
+            // Forward only: keyframes not sent yet.
+            Mode::Cutting { target, .. } => (self.key_reaching(target, self.cursor, now), target),
             _ => return false,
         };
         let Some(k) = key else { return false };
@@ -669,8 +673,13 @@ impl Engine {
     /// Bound memory: drop sent GOPs once a younger keyframe is `retain` old;
     /// beyond the hard limits (age, bytes) drop the oldest content regardless.
     fn trim(&mut self, now: Instant) {
+        // A pending switch needs the keyframe that is about to reach its target.
+        let hold = match self.target() {
+            t if t.is_zero() => self.retain,
+            t => self.retain.max(t + SAFETY_MARGIN + CATCH_WINDOW),
+        };
         while let Some(&k1) = self.keys.iter().find(|&&k| k > self.base) {
-            if k1 > self.cursor || self.age(k1, now) < self.retain {
+            if k1 > self.cursor || self.age(k1, now) < hold {
                 break;
             }
             while self.base < k1 {
@@ -847,13 +856,15 @@ pub(crate) mod tests {
         assert_eq!(e.enable(Duration::from_secs(30), t0), Ok(Enabled::Building { buffer_grown: false }));
         assert_eq!(e.enable(Duration::from_secs(30), t0), Err(Refusal::AlreadyActive));
         assert_eq!(e.check_retain(Duration::from_secs(10)).unwrap_err().code(), "invalid_in_mode");
-        e.go_live(t0).unwrap(); // the keyframe was never sent: live at once
+        e.go_live(t0).unwrap(); // never jumped back: live at once
         assert_eq!(e.go_live(t0), Err(Refusal::AlreadyLive));
         // Going live waits for a keyframe that has not been sent yet.
         let t1 = t0 + Duration::from_secs(2);
         drain(&mut e, t0);
         e.push(video(33, false), t0);
-        assert_eq!(e.enable(Duration::from_secs(1), t1), Ok(Enabled::Instant));
+        assert_eq!(e.enable(Duration::from_secs(1), t1), Ok(Enabled::NextKeyframe), "keyframe 2 s old, not 1.2 s");
+        e.go_live(t1).unwrap();
+        assert_eq!(e.enable(Duration::from_millis(1700), t1), Ok(Enabled::Instant), "keyframe just 1.9 s old");
         drain(&mut e, t1);
         e.go_live(t1).unwrap();
         assert_eq!(e.status(t1, Duration::ZERO).state, DelayState::Draining);

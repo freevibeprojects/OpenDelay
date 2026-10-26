@@ -210,6 +210,59 @@ async fn rtmps_upstream() {
 }
 
 #[tokio::test]
+async fn one_encoder_streams_to_several_platforms() {
+    let (twitch, kick) = (MockIngest::start(Behaviour::default()).await, MockIngest::start(Behaviour::default()).await);
+    // This platform drops its first connection: only that route reconnects.
+    let yt = MockIngest::start(Behaviour { drop_first_after: Some(40), ..Default::default() }).await;
+    let mirror = |path: &str, ingest: &MockIngest, key: &str| Route {
+        source: "t".into(),
+        key: key.into(),
+        ..route(path, format!("rtmp://{}/app", ingest.addr))
+    };
+    let routes = vec![
+        route("t", format!("rtmp://{}/app", twitch.addr)),
+        mirror("kick", &kick, "kick-key"),
+        mirror("yt", &yt, "yt-key"),
+    ];
+    let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
+    let (relay, addr) = relay_for(routes, RelayOptions { delay, ..Default::default() }).await;
+
+    let (_direct, reply) = Encoder::connect(addr, "kick").await;
+    assert_eq!(reply.name, "_error", "encoders publish to the source route, not to a route sending it");
+
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("twitch-key").await;
+    for (ingest, key) in [(&twitch, "twitch-key"), (&kick, "kick-key"), (&yt, "yt-key")] {
+        ingest.wait_for(key, |s| s.iter().any(|x| matches!(x, Seen::Publish { key: k, .. } if k == key))).await;
+    }
+    assert_eq!(relay.sessions().len(), 3);
+
+    let stream = synthetic_stream(120, 15); // 4 s, keyframe every 0.5 s
+    let split = stream.iter().position(|m| m.timestamp >= 2000).unwrap();
+    let start = tokio::time::Instant::now();
+    enc.send_paced(&stream[..split], start, 0).await;
+    relay.enable_delay(None).unwrap();
+    for s in relay.sessions() {
+        assert!(s.engine().is_active(), "delay applied to {}", s.route.name);
+    }
+    enc.send_paced(&stream[split..], start, 0).await;
+    enc.unpublish().await;
+
+    yt.wait_for("reconnect", |s| s.iter().any(|x| matches!(x, Seen::Publish { conn: 1, key, .. } if key == "yt-key")))
+        .await;
+    for (ingest, conn) in [(&twitch, 0), (&kick, 0), (&yt, 1)] {
+        ingest.wait_for("unpublish", |s| s.iter().any(|x| matches!(x, Seen::Unpublish { .. }))).await;
+        let got = ingest.media(conn);
+        assert!(got.iter().any(|m| frame_no(m) == Some(119)), "whole stream delivered");
+        assert!(
+            got.iter().any(|m| m.type_id == msg_type::VIDEO && m.payload[..2] == [0x17, 0] && m.timestamp > 0),
+            "delay jump on every platform"
+        );
+    }
+    wait_no_sessions(&relay).await;
+}
+
+#[tokio::test]
 async fn delay_actions_through_the_relay() {
     let ingest = MockIngest::start(Behaviour::default()).await;
     let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };

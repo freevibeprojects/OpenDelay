@@ -66,23 +66,27 @@ Each entry: the decision, then why.
 - **Timing uses arrival time.** A message is due `delay` after it arrived from
   the encoder (not after its RTMP timestamp), so encoder hiccups are replayed
   faithfully and the delay is wall-clock accurate.
-- **Instant enable** picks the latest buffered keyframe at least `delay +
-  200 ms` old. The achieved delay is reported as the current delay (it is at
-  most one keyframe interval longer than requested); the requested value is
+- **Switches land on the delay, not past it.** Enabling (and changing) the
+  delay jumps when a buffered keyframe becomes `delay + 200 ms` old (within
+  250 ms), so viewers see the last `delay` seconds again and the switch
+  comes at most one keyframe interval after the request. An earlier version
+  jumped at once to the newest keyframe that was old enough, which set
+  viewers back by up to one keyframe interval more than requested. The
+  achieved delay is reported as the current delay; the requested value is
   the target.
-- **Growing ("buffering")**: when no keyframe is old enough, output jumps
-  back to the oldest buffered keyframe (viewers stop seeing new content at
-  once) and jumps back again as soon as a keyframe reaches the requested age.
-  Output never pauses: an earlier version paused until content aged, and
-  Twitch closed the connection after 30 s without data.
+- **Growing ("buffering")**: when no keyframe is old enough yet, viewers stay
+  live and jump back once one is. Output never pauses: an earlier version
+  paused until content aged, and Twitch closed the connection after 30 s
+  without data. Another replayed what was buffered at once and jumped back a
+  second time later; viewers saw two repeats.
 - **"Buffer not ready"** is returned only when nothing usable has been
   buffered yet (no keyframe received), since growing handles every other case.
 - **Requested delay longer than the buffer**: the buffer grows to the delay
   (also persisted as the new buffer setting) and the message says the delay
-  becomes fully effective once the buffer has filled.
+  starts once the buffer has filled.
 - **Changing the delay while active**: longer jumps back, shorter jumps
-  forward, each to the keyframe closest to the new value that is at least
-  that old; differences under 0.5 s only retarget.
+  forward, each when a keyframe reaches the new value (as above);
+  differences under 0.5 s only retarget.
 - **Going live** jumps forward to the latest unsent keyframe (or the next one
   to arrive), skipping the backlog; timestamps stay continuous. An earlier
   version sent the backlog faster than real time, which leaves viewers
@@ -185,6 +189,30 @@ Each entry: the decision, then why.
   over 1 s; "slow start" when the first keyframe arrives more than 5 s after
   publishing; the only built-in resolution limit is Kick at 1920×1080.
   Findings are logged once per session.
+- **Multistream from one encoder output**: a route with a `source` sends that
+  route's encoder stream with its own stored key. Each such route is a
+  separate session (own engine, upstream, recovery, log) fed by the source's
+  encoder loop; media payloads are shared (`Bytes`), only the buffer
+  bookkeeping is per route. This reuses the whole single-route path (delay
+  actions already applied to every session) instead of fanning one engine's
+  output out to several connections, which would need per-connection
+  cursors and resynchronisation. Delay actions also apply to sessions still
+  connecting or reconnecting, so no platform ends up less delayed than the
+  others. A route sending another's stream retries for as long as the
+  source streams (the source route's own failure still disconnects the
+  encoder). Keys live in the settings file like OBS keeps them in its
+  profile, are redacted from session logs and are never returned by the API.
+- **OBS service entry** (`crates/core/src/obs.rs`): a custom server makes OBS
+  skip the platform's recommended settings (x264's "auto" keyframe interval
+  is 250 frames, 8.3 s at 30 fps), so OpenDelay adds its own entry to
+  `obs-studio/plugin_config/rtmp-services/services.json` with
+  `"recommended": {"keyint": 2}`, the same mechanism Twitch's entry uses.
+  Checked with OBS 33: the entry gives `keyint: 60` at 30 fps, survives OBS
+  exiting, and OBS reads the list each time its settings open. OBS replaces
+  the file when it downloads a newer service list, so the entry is rewritten
+  at startup and on route changes once the user added it (`obsService` in
+  the settings). Nothing else in the file changes (serde_json
+  `preserve_order`); the previous file is kept as `services.json.opendelay.bak`.
 - **Twitch servers** come from Twitch's public ingest list
   (`https://ingest.twitch.tv/ingests`), fetched at startup when a Twitch route
   exists and on demand. Accepted hosts: `live.twitch.tv`, `*.twitch.tv`,

@@ -68,6 +68,8 @@ pub struct Settings {
     pub overlay_color: String,
     pub reduce_motion: bool,
     pub background_animation: bool,
+    /// OpenDelay was added to OBS's service list; kept up to date with the routes.
+    pub obs_service: bool,
     /// Fields this version does not know (e.g. from a newer version), kept on save.
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
@@ -94,6 +96,7 @@ impl Default for Settings {
             overlay_color: "violet".into(),
             reduce_motion: false,
             background_animation: true,
+            obs_service: false,
             extra: serde_json::Map::new(),
         }
     }
@@ -171,7 +174,7 @@ impl Settings {
     }
 }
 
-fn home() -> Option<PathBuf> {
+pub(crate) fn home() -> Option<PathBuf> {
     env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")).map(PathBuf::from)
 }
 

@@ -5,3 +5,4 @@
 /fuzz/corpus
 /fuzz/artifacts
 /fuzz/Cargo.lock
+.env

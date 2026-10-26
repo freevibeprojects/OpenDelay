@@ -14,6 +14,12 @@ export struct RouteItem {
     // rtmp://127.0.0.1:1935/<path>
     local-url: string,
     host: string,
+    // id of the route whose stream this one also sends ("" = own encoder)
+    source: string,
+    source-name: string,
+    // a new stream key to save (never filled in from Rust; "" keeps the stored one)
+    key: string,
+    has-key: bool,
 }
 
 export struct StreamItem {
@@ -76,6 +82,8 @@ export global AppState {
     in property <[RouteItem]> routes;
     // destination presets (name/path/upstream defaults)
     in property <[RouteItem]> presets;
+    // routes with their own encoder stream, which other routes can send
+    in property <[Choice]> route-sources;
     // ---- overlay / dock / controllers ----
     in property <bool> overlay-visible: true;
     in property <string> overlay-color: "violet";
@@ -142,6 +150,7 @@ export global AppState {
     callback set-background-animation(bool);
     callback set-listener-mode(string);
     callback new-lan-key();
+    callback add-to-obs();
     callback set-twitch-server(string);
     callback refresh-twitch-servers();
     // the Twitch server list is opened: fetch it once (no request at startup)
@@ -157,6 +166,8 @@ export global AppState {
     callback refresh-logs();
     // preset id, server URL (TikTok/Custom) → error or ""
     callback finish-onboarding(string, string) -> string;
+    // route id → name
+    pure callback route-name(string) -> string;
     callback quit();
     callback quit-now();
 
@@ -210,7 +221,6 @@ export global Strings {
         if (code == "invalid_value" && detail == "delay_range") { return @tr("The delay must be between 1 second and 10 minutes."); }
         if (code == "invalid_value" && detail == "buffer_range") { return @tr("The buffer must be between 5 seconds and 10 minutes."); }
         if (code == "transition_in_progress") { return @tr("Please wait for the current transition to finish."); }
-        if (code == "upstream_recovering") { return @tr("The connection to the platform is recovering. Try again shortly."); }
         if (code == "unsustainable") { return @tr("This delay does not fit in memory at the current bitrate."); }
         if (code == "transport_error") { return @tr("The stream connection failed while applying the action."); }
         if (code == "invalid_value") { return @tr("That value is out of range."); }
@@ -219,7 +229,7 @@ export global Strings {
 
     public pure function success(action: string) -> string {
         if (action == "enable") { return @tr("Delay on"); }
-        if (action == "enable-building") { return @tr("The delay is building up"); }
+        if (action == "enable-building") { return @tr("The delay starts once enough is buffered"); }
         if (action == "golive") { return @tr("Going live"); }
         if (action == "setdelay") { return @tr("Delay updated"); }
         if (action == "setbuffer") { return @tr("Buffer length updated"); }
@@ -232,6 +242,7 @@ export global Strings {
         if (action == "log-saved") { return @tr("Log saved to your Downloads folder"); }
         if (action == "twitch-list") { return @tr("Twitch server list updated"); }
         if (action == "lan-key") { return @tr("New network access key. Other computers need the new key from now on."); }
+        if (action == "obs") { return @tr("OpenDelay added to OBS. In OBS open Settings → Stream and choose the service \"OpenDelay\"."); }
         if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
         @tr("Saved")
     }
@@ -249,6 +260,9 @@ export global Strings {
         if (code == "url_bad_port") { return @tr("The server URL has an invalid port."); }
         if (code == "route_streaming") { return @tr("This route is streaming. Stop the stream in your encoder first."); }
         if (code == "default_route") { return @tr("The default Twitch route can be edited or disabled, but not deleted."); }
+        if (code == "source_invalid") { return @tr("Choose a route that receives its own encoder stream."); }
+        if (code == "key_missing") { return @tr("Paste the stream key from the platform."); }
+        if (code == "route_source") { return @tr("\"{}\" sends this route's stream; change that route first.", detail); }
         if (code == "not_found") { return @tr("This route no longer exists."); }
         if (code == "hotkey_key") { return @tr("This key cannot be used for a global shortcut."); }
         if (code == "hotkey_taken") { return @tr("This shortcut is already used by another application or action."); }
@@ -257,6 +271,7 @@ export global Strings {
         if (code == "hotkey_wayland") { return @tr("Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."); }
         if (code == "autostart") { return @tr("Could not change the start-with-system setting: {}", detail); }
         if (code == "save_failed") { return @tr("Could not save the file: {}", detail); }
+        if (code == "obs_service") { return @tr("Could not add OpenDelay to OBS: {}", detail); }
         if (code == "network") { return @tr("Network error: {}", detail); }
         if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
         if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }
@@ -276,7 +291,7 @@ export global Strings {
 
     public pure function finding-detail(code: string, value: string, limit: string) -> string {
         if (code == "codec") { return @tr("{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder.", value); }
-        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder (OBS: Settings → Output).", value, limit); }
+        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder, or in OBS choose the service \"OpenDelay\" (Setup page: Add to OBS).", value, limit); }
         if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall.", value); }
         if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder for cleaner switches."); }
         if (code == "timestamps") { return @tr("The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."); }

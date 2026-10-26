@@ -19,10 +19,19 @@ export global RouteEditor {
     }
 
     public function add() {
-        self.route = AppState.presets[1];
-        self.error = "";
+        self.pick(AppState.presets[1]);
         self.confirm-delete = false;
         self.open = true;
+    }
+
+    // New routes send the main route's stream by default (one encoder output).
+    public function pick(p: RouteItem) {
+        self.route = p;
+        if (AppState.route-sources.length > 0) {
+            self.route.source = AppState.route-sources[0].value;
+            self.route.source-name = AppState.route-sources[0].label;
+        }
+        self.error = "";
     }
 }
 
@@ -74,6 +83,7 @@ export component RouteEditorModal inherits Modal {
 
     property <bool> is-new: RouteEditor.route.id == "";
     property <bool> is-twitch: RouteEditor.route.preset == "twitch";
+    property <bool> is-mirror: RouteEditor.route.source != "";
 
     if root.is-new: VerticalLayout {
         spacing: 8px;
@@ -84,10 +94,7 @@ export component RouteEditorModal inherits Modal {
             for p in AppState.presets: PresetChip {
                 preset: p;
                 selected: RouteEditor.route.preset == p.preset;
-                clicked => {
-                    RouteEditor.route = p;
-                    RouteEditor.error = "";
-                }
+                clicked => { RouteEditor.pick(p); }
             }
         }
     }
@@ -100,7 +107,54 @@ export component RouteEditorModal inherits Modal {
             edited(t) => { RouteEditor.route.name = t; }
         }
     }
-    VerticalLayout {
+    HorizontalLayout {
+        spacing: 12px;
+        Toggle {
+            label: @tr("Send the stream of another route");
+            checked: root.is-mirror;
+            enabled: root.is-mirror || AppState.route-sources.length > 0;
+            toggled(on) => {
+                RouteEditor.route.source = on ? AppState.route-sources[0].value : "";
+                RouteEditor.route.source-name = on ? AppState.route-sources[0].label : "";
+            }
+        }
+        Text {
+            text: @tr("Send the stream of another route");
+            color: Theme.text-primary;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+    if root.is-mirror: VerticalLayout {
+        spacing: 6px;
+        Text { text: @tr("Stream of"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+        Select {
+            label: @tr("Stream of");
+            choices: AppState.route-sources;
+            value: RouteEditor.route.source;
+            current: RouteEditor.route.source-name;
+            chosen(v) => {
+                RouteEditor.route.source = v;
+                RouteEditor.route.source-name = AppState.route-name(v);
+            }
+        }
+        Body {
+            text: @tr("One encoder output reaches several platforms: whatever your encoder sends to \"{}\" also goes here, with this platform's stream key.", RouteEditor.route.source-name);
+            font-size: 12px;
+        }
+    }
+    if root.is-mirror: VerticalLayout {
+        spacing: 6px;
+        Text { text: @tr("Stream key"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+        TextField {
+            label: @tr("Stream key");
+            password: true;
+            placeholder: RouteEditor.route.has-key ? @tr("Saved; paste a new key to replace it") : @tr("Paste the stream key from the platform");
+            text: RouteEditor.route.key;
+            edited(t) => { RouteEditor.route.key = t; }
+        }
+    }
+    if !root.is-mirror: VerticalLayout {
         spacing: 6px;
         Text { text: @tr("Local path"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         TextField {
@@ -141,8 +195,9 @@ export component RouteEditorModal inherits Modal {
             edited(t) => { RouteEditor.route.upstream = t; }
         }
         Body {
-            text: root.is-twitch
-                ? @tr("Only Twitch ingest servers are accepted. Your stream key stays in your encoder.")
+            text: root.is-twitch && root.is-mirror ? @tr("Only Twitch ingest servers are accepted.")
+                : root.is-twitch ? @tr("Only Twitch ingest servers are accepted. Your stream key stays in your encoder.")
+                : root.is-mirror ? @tr("Paste the server URL from your platform without the stream key.")
                 : @tr("Paste the server URL from your platform without the stream key; the key stays in your encoder.");
             font-size: 12px;
         }
@@ -244,7 +299,7 @@ component RouteCard inherits Card {
         }
         HorizontalLayout {
             spacing: 16px;
-            VerticalLayout {
+            if root.route.source == "": VerticalLayout {
                 spacing: 6px;
                 horizontal-stretch: 3;
                 Text { text: @tr("Encoder server URL"); color: Theme.text-secondary; font-size: 12px; }
@@ -252,6 +307,23 @@ component RouteCard inherits Card {
                     value: root.route.local-url;
                     label: @tr("Encoder server URL");
                     copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                }
+            }
+            if root.route.source != "": VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 3;
+                Text { text: @tr("Stream of"); color: Theme.text-secondary; font-size: 12px; }
+                Rectangle {
+                    min-height: 38px;
+                    Text {
+                        x: 0;
+                        text: root.route.source-name;
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        width: parent.width;
+                    }
                 }
             }
             VerticalLayout {
@@ -285,7 +357,7 @@ export component MultistreamPage {
         HorizontalLayout {
             spacing: 16px;
             Body {
-                text: @tr("Each route has its own local path. Point one encoder output at each route to stream to several platforms at the same time.");
+                text: @tr("To stream to several platforms with one encoder output, add a route per platform that sends the stream of your main route, with that platform's stream key.");
                 font-size: 13px;
                 horizontal-stretch: 1;
                 vertical-alignment: center;
@@ -304,10 +376,9 @@ export component MultistreamPage {
                 padding: 20px;
                 spacing: 8px;
                 SectionTitle { text: @tr("Streaming to several platforms"); }
-                Body { text: @tr("Most encoders have a single stream output. To go live on more than one platform:"); }
-                Body { text: @tr("• OBS: add a second output with a multiple-output plugin, or use Aitum Vertical for a vertical stream, and give each output its own route URL."); }
-                Body { text: @tr("• Streamlabs and others: use one route per platform and switch the route in the encoder, or a restreaming service via the Restream preset."); }
-                Body { text: @tr("The delay settings apply to every live route at once."); }
+                Body { text: @tr("• One encoder output: \"Add route\", pick the platform, keep \"Send the stream of another route\" on and paste the platform's stream key. Your encoder keeps streaming to your main route only."); }
+                Body { text: @tr("• Separate outputs (e.g. Aitum Vertical for a vertical stream): turn that switch off and give each output its own route URL."); }
+                Body { text: @tr("Each platform connects and reconnects on its own, and the delay applies to all of them at once. Your upload carries every platform's stream."); }
             }
         }
     }

@@ -88,12 +88,13 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
 
 ### 4.2 Switching delay ON (instant)
 - On request with delay D:
-  - Find the latest keyframe that is at least D old (with a small safety
-    margin) and start sending from there.
-  - If the buffer does not yet contain content D old, jump back to the
-    oldest buffered keyframe now, and jump back again as soon as a keyframe
-    D old is buffered. Output never pauses: platforms drop an ingest that
-    sends nothing (Twitch after 30 s) and viewers would see a frozen stream.
+  - When a buffered keyframe becomes D old (with a small safety margin),
+    start sending from it: viewers see the last D seconds again. This
+    happens within one keyframe interval of the request.
+  - If the buffer does not yet contain content D old, keep sending live and
+    jump back once a keyframe D old is buffered. Output never pauses:
+    platforms drop an ingest that sends nothing (Twitch after 30 s) and
+    viewers would see a frozen stream.
   - Make the switch only at a message boundary, so no RTMP message is cut
     mid-way.
 - The platform must see continuous, monotonically increasing timestamps
@@ -101,14 +102,14 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
 - Re-send codec configuration (sequence headers / metadata) before replaying,
   and send full chunk headers for each chunk stream after the jump.
 - If the requested delay is larger than the current buffer, grow the buffer
-  to fit it, and report that the delay will become fully effective once the
-  buffer has filled.
+  to fit it, and report that the delay starts once the buffer has filled.
 
 ### 4.3 Switching delay OFF (go live)
 - Jump forward to the latest keyframe (viewers skip the delayed backlog), or
-  at the next keyframe when none is left to send. A shorter delay works the
-  same way. (Sending the backlog faster than real time does not shorten what
-  viewers see unless their player skips ahead by itself.)
+  at the next keyframe when none is left to send. A shorter delay jumps
+  forward when a keyframe reaches the new delay. (Sending the backlog faster
+  than real time does not shorten what viewers see unless their player skips
+  ahead by itself.)
 - Keep timestamps continuous across the transition.
 
 ### 4.4 Actions
@@ -136,9 +137,11 @@ plus a human-readable message. Required reasons:
 - delay mode is turned off
 - action not valid in the current mode
 - another transition is still in progress
-- upstream connection is recovering
 - requested delay cannot be sustained at the current bitrate
 - transport error
+
+A reconnecting upstream is not a refusal: delay actions apply to it too, so
+several destinations never diverge.
 
 ### 4.6 Persistence
 Persist whether delay mode is enabled and the default buffer length; restore
@@ -176,8 +179,13 @@ the number of observed frames.
   - The default Twitch route may be edited or disabled but not deleted.
   - Path changes take effect on the encoder's next connection; say so.
 - Multistream: several routes may be live at the same time (one encoder
-  output per route). Show a short guide for encoders that only allow one
-  output (e.g. use a second output plugin, or one route per platform).
+  output per route). A route can also send the stream of another route
+  (its "source") with its own stored stream key, so one encoder output
+  reaches several platforms (e.g. Twitch + Kick + YouTube). Each such route
+  has its own upstream connection, recovery (retrying for as long as the
+  source streams) and session log; delay actions apply to all of them.
+  Encoders cannot publish to such a route directly. Stored keys are never
+  returned by the API.
 
 ## 7. User interface
 
@@ -202,6 +210,11 @@ First-run wizard: choose the platform, show the server URL and stream key
 instructions for the chosen encoder (OBS, Streamlabs, others) with
 screenshots of the encoder's settings, explain overlay setup, then finish.
 Remember completion; the wizard is re-openable from settings.
+
+For OBS, "Add to OBS" adds an "OpenDelay" service (one server per route) to
+OBS's service list with a recommended 2 s keyframe interval, so OBS applies
+it (and CBR) by itself instead of the user changing encoder settings. Once
+added, the entry follows route changes and is restored at startup.
 
 ### 7.3 OBS dock and overlay
 - **Dock page**: a compact version of the control panel, served over HTTP on

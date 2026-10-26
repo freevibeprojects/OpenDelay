@@ -199,11 +199,30 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     };
     // The same machine reconnecting replaces its stale session; another
     // machine cannot take over a route that is streaming.
-    if let Err(reason) = relay.replace_route_sessions(&route.path, peer.ip()).await {
+    if let Err(reason) = relay.replace_route_sessions(&route, peer.ip()).await {
         let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
         return;
     }
 
+    let sess = new_session(&relay, id, route, peer);
+    if let Err(reason) = relay.add_session(sess.clone()) {
+        let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
+        sess.log.event(format!("Refused: {reason}"));
+        sess.log.finish();
+        return;
+    }
+    sess.log.event(format!("Encoder connected from {peer}"));
+    let result = serve(&sess, &relay, er, ew, connect, deadline).await;
+    match result {
+        Ok(()) => sess.log.event("Session ended"),
+        Err(e) => sess.log.event(format!("Session ended: {e}")),
+    }
+    sess.token.cancel();
+    sess.log.finish();
+    relay.remove_session(id);
+}
+
+fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<Session> {
     let host = UpstreamUrl::parse(&route.upstream).map(|u| u.host).unwrap_or_default();
     let mut header = vec![
         ("Session", crate::diag::short_id()),
@@ -211,12 +230,15 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
         ("Upstream server", host),
         ("Encoder address", peer.to_string()),
     ];
+    if !route.source.is_empty() {
+        header.push(("Sends the stream of route", route.source.clone()));
+    }
     if route.preset == "twitch" {
         header.push(("Twitch server", route.upstream.clone()));
     }
     let log = SessionLog::create(relay.log_dir.as_deref(), id, &header);
     let preset = route.preset.clone();
-    let sess = Arc::new(Session {
+    Arc::new(Session {
         id,
         route,
         peer,
@@ -236,22 +258,61 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
             logged: Vec::new(),
         }),
         claimed: AtomicBool::new(false),
-    });
-    if let Err(reason) = relay.add_session(sess.clone()) {
-        let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
-        sess.log.event(format!("Refused: {reason}"));
-        sess.log.finish();
-        return;
+    })
+}
+
+/// Sessions for the routes that also send `sess`'s stream (multistream),
+/// each connecting to its platform in the background.
+fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) -> Vec<Arc<Session>> {
+    let mut started = Vec::new();
+    for route in relay.mirrors_of(&sess.route.id) {
+        let m = new_session(relay, relay.next_id(), route, sess.peer);
+        m.log.set_secret(&m.route.key);
+        m.claim();
+        if let Err(reason) = relay.add_session(m.clone()) {
+            m.log.event(format!("Refused: {reason}"));
+            m.log.finish();
+            continue;
+        }
+        sess.log.event(format!("Also sending to route \"{}\"", m.route.name));
+        tokio::spawn(run_mirror(m.clone(), relay.clone(), encoder_connect.clone()));
+        started.push(m);
     }
-    sess.log.event(format!("Encoder connected from {peer}"));
-    let result = serve(&sess, &relay, er, ew, connect, deadline).await;
-    match result {
-        Ok(()) => sess.log.event("Session ended"),
-        Err(e) => sess.log.event(format!("Session ended: {e}")),
+    started
+}
+
+/// A route sending another route's stream: its own platform connection and
+/// stream key, fed by that route's encoder until the encoder stops.
+async fn run_mirror(sess: Arc<Session>, relay: Arc<Shared>, encoder_connect: Amf0) {
+    let key = sess.route.key.clone();
+    match UpstreamUrl::parse(&sess.route.upstream) {
+        Ok(url) => {
+            let connect_obj = upstream::connect_object(&encoder_connect, &url);
+            sess.log.event(format!("Connecting to upstream {}:{}", url.host, url.port));
+            let opened = tokio::select! {
+                r = Upstream::open(&url, &connect_obj, &key, &relay.tls) => Some(r),
+                _ = sess.token.cancelled() => None,
+            };
+            let up = match opened {
+                Some(Ok(up)) => Some(up),
+                Some(Err(e)) => {
+                    sess.log.event(format!("Upstream publish failed: {e}"));
+                    recover(&sess, &relay.tls, &url, &connect_obj, &key, e).await
+                }
+                None => None,
+            };
+            if let Some(up) = up {
+                sess.set_info(Phase::Live, 0, None);
+                sess.log.event("Publishing; relay is live");
+                upstream_loop(sess.clone(), relay.tls.clone(), up, url, connect_obj, key).await;
+            }
+        }
+        Err(e) => sess.log.event(format!("Invalid server URL: {e}")),
     }
+    sess.log.event("Session ended");
     sess.token.cancel();
     sess.log.finish();
-    relay.remove_session(id);
+    relay.remove_session(sess.id);
 }
 
 /// Whether the `connect` object's `app` or `tcUrl` carries `?key=<key>`
@@ -284,7 +345,7 @@ async fn read_connect(er: &mut MsgReader, ew: &mut MsgWriter) -> Option<Command>
 
 async fn serve(
     sess: &Arc<Session>,
-    relay: &Shared,
+    relay: &Arc<Shared>,
     mut er: MsgReader,
     mut ew: MsgWriter,
     connect: Command,
@@ -404,13 +465,19 @@ async fn serve(
     sess.log.event("Publishing; relay is live");
     er.set_max_message_size(u32::MAX); // media: keyframes can be several MiB
 
+    let mirrors = start_mirrors(sess, relay, &connect.object);
     let upstream_task = tokio::spawn(upstream_loop(sess.clone(), tls.clone(), up, url, connect_obj, key));
-    let ended = encoder_loop(sess, &mut er, &mut ew).await;
-    sess.engine().finish_input();
-    sess.wake();
-    if !sess.token.is_cancelled() {
-        let info = sess.info();
-        sess.set_info(Phase::Finishing, info.recovery_attempt, info.last_error);
+    let ended = encoder_loop(sess, &mirrors, &mut er, &mut ew).await;
+    for s in std::iter::once(sess).chain(&mirrors) {
+        // Stopped, or still without a platform connection: nothing to finish.
+        if sess.token.is_cancelled() || (s.id != sess.id && s.info().phase != Phase::Live) {
+            s.token.cancel();
+            continue;
+        }
+        s.engine().finish_input();
+        s.wake();
+        let info = s.info();
+        s.set_info(Phase::Finishing, info.recovery_attempt, info.last_error);
     }
     let _ = upstream_task.await;
     ended
@@ -425,7 +492,13 @@ async fn send_to_encoder(ew: &mut MsgWriter, msg: &Message) -> Res<()> {
     }
 }
 
-async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) -> Res<()> {
+async fn encoder_loop(sess: &Session, mirrors: &[Arc<Session>], er: &mut MsgReader, ew: &mut MsgWriter) -> Res<()> {
+    let push = |m: Message| {
+        for x in mirrors.iter().filter(|x| !x.token.is_cancelled()) {
+            x.push(m.clone()); // payloads are shared, not copied
+        }
+        sess.push(m);
+    };
     loop {
         let msg = tokio::select! {
             r = timeout(ENCODER_IDLE, er.read()) => match r {
@@ -439,17 +512,17 @@ async fn encoder_loop(sess: &Session, er: &mut MsgReader, ew: &mut MsgWriter) ->
             },
             _ = sess.token.cancelled() => return Err("stopped".into()),
         };
-        sess.bytes_in.store(er.bytes_received(), Ordering::Relaxed);
+        for s in std::iter::once(sess).chain(mirrors.iter().map(|m| &**m)) {
+            s.bytes_in.store(er.bytes_received(), Ordering::Relaxed);
+        }
         if let Some(a) = er.ack_due() {
             send_to_encoder(ew, &a).await?;
         }
         match msg.type_id {
-            msg_type::AUDIO | msg_type::VIDEO | msg_type::DATA_AMF0 | msg_type::DATA_AMF3 => sess.push(msg),
+            msg_type::AUDIO | msg_type::VIDEO | msg_type::DATA_AMF0 | msg_type::DATA_AMF3 => push(msg),
             // Only media from inside an aggregate: control or command types would
             // otherwise reach the upstream verbatim.
-            msg_type::AGGREGATE => {
-                split_aggregate(&msg).into_iter().filter(Message::is_media).for_each(|m| sess.push(m))
-            }
+            msg_type::AGGREGATE => split_aggregate(&msg).into_iter().filter(Message::is_media).for_each(push),
             msg_type::USER_CONTROL => {
                 if let Some(r) = control_reply(&msg) {
                     send_to_encoder(ew, &r).await?;
@@ -498,7 +571,11 @@ async fn upstream_loop(
         sess.log.event(format!("Upstream connection lost: {err}"));
         let Some(new) = recover(&sess, &tls, &url, &connect_obj, &key, err).await else {
             if !sess.token.is_cancelled() {
-                sess.log.event("Upstream recovery failed; disconnecting the encoder");
+                sess.log.event(if sess.route.source.is_empty() {
+                    "Upstream recovery failed; disconnecting the encoder"
+                } else {
+                    "Upstream recovery failed; this route stops"
+                });
                 sess.token.cancel();
             }
             return;
@@ -519,7 +596,12 @@ async fn recover(
 ) -> Option<Upstream> {
     let resume_phase = sess.info().phase;
     let resume_phase = if resume_phase == Phase::Finishing { Phase::Finishing } else { Phase::Live };
-    for attempt in 1..=MAX_RECOVERY_ATTEMPTS {
+    // A route sending another route's stream keeps trying while that stream
+    // lasts; giving up on the encoder's own route disconnects the encoder,
+    // which then reconnects by itself.
+    let attempts =
+        if sess.route.source.is_empty() || resume_phase == Phase::Finishing { MAX_RECOVERY_ATTEMPTS } else { u32::MAX };
+    for attempt in 1..=attempts {
         sess.set_info(Phase::Recovering, attempt, Some(err.to_string()));
         let backoff = Duration::from_millis(500 << (attempt - 1).min(5)).min(Duration::from_secs(15));
         let opened = tokio::select! {
@@ -537,7 +619,7 @@ async fn recover(
             }
         }
     }
-    sess.set_info(Phase::Recovering, MAX_RECOVERY_ATTEMPTS, Some(err.to_string()));
+    sess.set_info(Phase::Recovering, attempts, Some(err.to_string()));
     None
 }
 

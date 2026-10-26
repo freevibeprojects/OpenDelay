@@ -24,8 +24,8 @@ mod portal;
 mod ui;
 
 use opendelay_core::app::{App, AppOptions};
-use slint::ComponentHandle;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType};
+use slint::{ComponentHandle, Model};
 use std::cell::Cell;
 use std::io::Write;
 use std::rc::Rc;
@@ -55,12 +55,17 @@ const W: u32 = 1180;
 const H: u32 = 820;
 
 fn shoot(window: &MinimalSoftwareWindow, time: &Cell<Duration>, path: &str) {
-    // let animations finish
+    let mut buf = vec![PremultipliedRgbaColor::default(); (W * H) as usize];
+    // Elements shown by a condition (e.g. a dialog) are created on a draw and
+    // start their animations there; then let animations finish.
+    window.request_redraw();
+    window.draw_if_needed(|r| {
+        r.render(&mut buf, W as usize);
+    });
     for _ in 0..30 {
         time.set(time.get() + Duration::from_millis(100));
         slint::platform::update_timers_and_animations();
     }
-    let mut buf = vec![PremultipliedRgbaColor::default(); (W * H) as usize];
     window.request_redraw();
     window.draw_if_needed(|r| {
         r.render(&mut buf, W as usize);
@@ -87,7 +92,19 @@ fn main() {
     let app =
         App::new(AppOptions { config_dir: Some(dir.join("config")), data_dir: Some(dir.join("data")), tls: None });
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-    let ui = ui::create(app, rt.handle().clone()).unwrap();
+    // A second platform that sends the Twitch route's stream (multistream).
+    let kick = opendelay_core::routes::PRESETS.iter().find(|p| p.id == "kick").unwrap();
+    app.add_route(opendelay_core::Route {
+        name: kick.name.into(),
+        preset: kick.id.into(),
+        path: kick.path.into(),
+        upstream: kick.upstream.into(),
+        source: "twitch".into(),
+        key: "example".into(),
+        ..Default::default()
+    })
+    .unwrap();
+    let ui = ui::create(app.clone(), rt.handle().clone()).unwrap();
     let lang = std::env::var("SHOT_LANG").unwrap_or_default();
     let _ = slint::select_bundled_translation(&lang);
     window.set_size(slint::PhysicalSize::new(W, H));
@@ -104,6 +121,13 @@ fn main() {
         w.set_page(i as i32);
         shoot(&window, &time, &format!("{out}/{name}.ppm"));
     }
+
+    // The route editor for the multistream route.
+    w.set_page(1);
+    let kick = s.get_routes().iter().find(|r| r.preset == "kick").unwrap();
+    w.global::<RouteEditor>().invoke_edit(kick);
+    shoot(&window, &time, &format!("{out}/multistream-editor.ppm"));
+    w.global::<RouteEditor>().set_open(false);
 
     // A delayed stream, as the dashboard shows it.
     w.set_page(0);

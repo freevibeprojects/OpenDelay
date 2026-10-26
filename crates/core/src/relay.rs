@@ -146,10 +146,24 @@ impl Shared {
         self.emergency_or_stopping()?;
         let routes = self.routes.read().unwrap_or_else(|e| e.into_inner());
         match routes.iter().find(|r| normalize_path(&r.path) == path) {
-            Some(r) if r.enabled => Ok(r.clone()),
-            Some(r) => Err(format!("The route \"{}\" is disabled in OpenDelay.", r.name)),
+            Some(r) if !r.enabled => Err(format!("The route \"{}\" is disabled in OpenDelay.", r.name)),
+            Some(r) if !r.source.is_empty() => Err(format!(
+                "The route \"{}\" sends the stream of another route in OpenDelay; point your encoder at that route.",
+                r.name
+            )),
+            Some(r) => Ok(r.clone()),
             None => Err(format!("OpenDelay has no route \"/{path}\". Check the server URL in your encoder.")),
         }
+    }
+
+    /// Enabled routes that also send the stream of route `id`.
+    pub fn mirrors_of(&self, id: &str) -> Vec<Route> {
+        let routes = self.routes.read().unwrap_or_else(|e| e.into_inner());
+        routes.iter().filter(|r| r.enabled && r.source == id && !r.key.is_empty()).cloned().collect()
+    }
+
+    pub fn next_id(&self) -> u64 {
+        self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn lan_key(&self) -> Option<String> {
@@ -220,15 +234,16 @@ impl Shared {
         self.lock_sessions().retain(|s| s.id != id);
     }
 
-    /// Before a new publish on `path`: stop the sessions the same machine left
-    /// on that route (an encoder reconnecting) and wait (≤ 3 s) for them to
-    /// end. Another machine cannot take over a route that is publishing;
-    /// sessions still negotiating do not block anyone (see `claim_route`).
-    pub async fn replace_route_sessions(&self, path: &str, peer: IpAddr) -> Result<(), String> {
+    /// Before a new publish on `route`: stop the sessions the same machine left
+    /// on that route and the routes sending its stream (an encoder
+    /// reconnecting) and wait (≤ 3 s) for them to end. Another machine cannot
+    /// take over a route that is publishing; sessions still negotiating do not
+    /// block anyone (see `claim_route`).
+    pub async fn replace_route_sessions(&self, route: &Route, peer: IpAddr) -> Result<(), String> {
         let on_route: Vec<Arc<Session>> = self
             .lock_sessions()
             .iter()
-            .filter(|s| normalize_path(&s.route.path) == normalize_path(path))
+            .filter(|s| normalize_path(&s.route.path) == normalize_path(&route.path) || s.route.source == route.id)
             .cloned()
             .collect();
         if on_route.iter().any(|s| s.peer.ip() != peer && s.is_claimed()) {
@@ -369,9 +384,12 @@ impl Relay {
         f(&mut self.shared.delay.lock().unwrap_or_else(|e| e.into_inner()));
     }
 
-    /// Sessions that are publishing (delay actions apply to all of them).
+    /// Sessions that are publishing (delay actions apply to all of them),
+    /// including those still connecting or reconnecting to their platform:
+    /// their engines keep buffering, and a platform that missed a delay
+    /// change would show viewers more than the others.
     fn streaming(&self) -> Vec<Arc<Session>> {
-        self.sessions().into_iter().filter(|s| matches!(s.info().phase, Phase::Live | Phase::Recovering)).collect()
+        self.sessions().into_iter().filter(|s| s.is_claimed() && s.info().phase != Phase::Finishing).collect()
     }
 
     /// Run `f` on every streaming session's engine. Succeeds if any session
@@ -379,13 +397,8 @@ impl Relay {
     fn apply<T>(&self, f: impl Fn(&mut Engine, Instant) -> Result<T, Refusal>) -> Result<Vec<T>, Refusal> {
         let (mut ok, mut refused) = (Vec::new(), None);
         for s in self.streaming() {
-            let r = if s.token.is_cancelled() {
-                Err(Refusal::TransportError)
-            } else if s.info().phase == Phase::Recovering {
-                Err(Refusal::UpstreamRecovering)
-            } else {
-                f(&mut s.engine(), Instant::now())
-            };
+            let r =
+                if s.token.is_cancelled() { Err(Refusal::TransportError) } else { f(&mut s.engine(), Instant::now()) };
             s.wake();
             match r {
                 Ok(v) => ok.push(v),
@@ -427,17 +440,22 @@ impl Relay {
         if d > cfg.buffer {
             self.update_config(|c| c.buffer = d);
         }
-        let how = if results.contains(&Enabled::Instant) { "instant switch" } else { "replaying what is buffered" };
+        let how = if results.contains(&Enabled::Instant) {
+            "instant switch"
+        } else if results.contains(&Enabled::NextKeyframe) {
+            "at the next keyframe"
+        } else {
+            "once that much is buffered"
+        };
         self.log_all(&format!("Delay enabled: {} ({how})", secs(d)));
         Ok(if results.contains(&Enabled::Instant) {
             format!("Delay on: viewers are now {} behind.", secs(d))
+        } else if results.contains(&Enabled::NextKeyframe) {
+            format!("Delay on: viewers jump back {} at the next keyframe.", secs(d))
         } else if d > cfg.buffer || results.contains(&Enabled::Building { buffer_grown: true }) {
-            format!("Buffer enlarged to {}; the delay becomes fully effective once it has filled.", secs(d))
+            format!("Buffer enlarged to {}; viewers stay live until it has filled, then jump back.", secs(d))
         } else {
-            format!(
-                "Delay on: viewers see everything buffered so far; it reaches {} once that much is buffered.",
-                secs(d)
-            )
+            format!("Delay on: viewers stay live until {} is buffered, then jump back.", secs(d))
         })
     }
 

@@ -7,7 +7,8 @@ OpenDelay relays the stream to the real ingest server and can switch a
 broadcast delay on and off at any time without stopping the stream.
 
 - Local RTMP relay (`rtmp://127.0.0.1:1935/<route>`) to `rtmp://` or `rtmps://`
-  upstreams, several routes live at once.
+  upstreams, several routes live at once; one encoder output can go to
+  several platforms (e.g. Twitch + Kick + YouTube), each with its own key.
 - Instant delay: a rolling buffer lets the delay start by replaying from the
   past; going live jumps straight back to the live edge.
 - Desktop UI, OBS dock and on-stream overlay, global hotkeys, tray menu, a local
@@ -115,13 +116,15 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
   after the restart (for the network type the other computer is on).
 - The RTMP listener uses port 1935 and the local web server port 3000; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
-- **Encoder settings**: pointing OBS at OpenDelay means choosing the
-  "Custom…" service, and OBS then stops applying the platform's recommended
-  settings. In Advanced output mode its keyframe interval falls back to
+- **Encoder settings**: with a "Custom…" server OBS stops applying the
+  platform's recommended settings, and its keyframe interval falls back to
   "auto" (about 8 s with x264). Twitch viewers may then see a black screen,
-  and the delay can only switch on keyframes. Set **Keyframe Interval** to
-  2 s and **Rate Control** to CBR under Settings → Output. OpenDelay warns
-  about long keyframe intervals a few seconds after a stream starts.
+  and the delay can only switch on keyframes. **Add to OBS** (Setup page)
+  avoids that: it adds an "OpenDelay" service to OBS's service list, and
+  with that service OBS uses a 2 s keyframe interval and CBR by itself.
+  Other encoders: set the keyframe interval to 2 s and CBR yourself.
+  OpenDelay warns about long keyframe intervals a few seconds after a
+  stream starts.
 
 ### Checks
 

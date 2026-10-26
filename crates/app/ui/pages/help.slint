@@ -39,8 +39,8 @@ export component HelpPage {
                     text: @tr("Check that the server URL in your encoder matches a route (for example rtmp://127.0.0.1:1935/twitch) and that the route is enabled.");
                 }
                 Tip {
-                    title: @tr("The delay is longer than set");
-                    text: @tr("A switch can only land on a keyframe, so the delay can be up to one keyframe interval longer than requested. Set the keyframe interval in your encoder to 2 seconds (Twitch requires that anyway).");
+                    title: @tr("The delay switches a moment late");
+                    text: @tr("A switch can only land on a keyframe, so it can come up to one keyframe interval after you ask for it. Set the keyframe interval in your encoder to 2 seconds, or in OBS choose the service \"OpenDelay\" (Setup page: Add to OBS), which does that by itself.");
                 }
                 Tip {
                     title: @tr("The platform rejects the stream");

@@ -46,6 +46,11 @@ pub struct Route {
     /// Twitch routes use the Twitch server chosen in settings.
     pub upstream: String,
     pub enabled: bool,
+    /// Id of the route whose encoder stream this route also sends (multistream
+    /// from one encoder output), with `key`; empty: the route's own encoder connection.
+    pub source: String,
+    /// This platform's stream key, used with `source`. Never returned by the API.
+    pub key: String,
 }
 
 impl Default for Route {
@@ -57,6 +62,8 @@ impl Default for Route {
             path: String::new(),
             upstream: String::new(),
             enabled: true,
+            source: String::new(),
+            key: String::new(),
         }
     }
 }
@@ -97,7 +104,7 @@ pub fn default_routes() -> Vec<Route> {
         preset: "twitch".into(),
         path: "twitch".into(),
         upstream: TWITCH_AUTO.into(),
-        enabled: true,
+        ..Default::default()
     }]
 }
 
@@ -146,6 +153,18 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     } else if route.enabled || !route.upstream.trim().is_empty() {
         UpstreamUrl::parse(&route.upstream)?;
     }
+    if !route.source.is_empty() {
+        // One level only: a source is a route with its own encoder connection.
+        let source = others.iter().find(|r| r.id == route.source && r.id != route.id);
+        if source.is_none_or(|s| !s.source.is_empty())
+            || others.iter().any(|r| r.id != route.id && r.source == route.id)
+        {
+            return Err(Problem::new("source_invalid", "Choose a route that receives its own encoder stream."));
+        }
+        if route.key.trim().is_empty() {
+            return Err(Problem::new("key_missing", "Paste the stream key from the platform."));
+        }
+    }
     Ok(())
 }
 
@@ -169,6 +188,27 @@ mod tests {
         let mut off = r("a", "tt", "");
         off.enabled = false;
         assert!(validate(&off, &routes).is_ok(), "disabled routes may lack a URL");
+    }
+
+    #[test]
+    fn multistream_rules() {
+        let mut routes = default_routes();
+        let mut kick = r("kick", "kick", "rtmps://h:443/app");
+        kick.source = "twitch".into();
+        assert_eq!(validate(&kick, &routes).unwrap_err().code, "key_missing");
+        kick.key = "k".into();
+        assert!(validate(&kick, &routes).is_ok());
+        routes.push(kick.clone());
+        let mut yt = r("yt", "yt", "rtmp://h/app");
+        yt.key = "k".into();
+        for bad in ["kick", "yt", "nope"] {
+            yt.source = bad.into();
+            assert_eq!(validate(&yt, &routes).unwrap_err().code, "source_invalid", "source {bad}");
+        }
+        let mut twitch = routes[0].clone();
+        (twitch.source, twitch.key) = ("yt".into(), "k".into());
+        routes.push(r("yt", "yt", "rtmp://h/app"));
+        assert_eq!(validate(&twitch, &routes).unwrap_err().code, "source_invalid", "a source cannot mirror");
     }
 
     #[test]

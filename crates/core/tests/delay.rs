@@ -87,7 +87,7 @@ fn stream() -> Vec<Message> {
 }
 
 #[test]
-fn ac2_enable_30s_with_full_60s_buffer_is_instant_and_seamless() {
+fn ac2_enable_30s_with_full_60s_buffer_repeats_30s_seamlessly() {
     let mut sim = Sim::new(60, stream());
     sim.secs(70.0);
     assert_eq!(sim.out.len(), sim.next, "passthrough sends everything immediately");
@@ -95,20 +95,26 @@ fn ac2_enable_30s_with_full_60s_buffer_is_instant_and_seamless() {
     assert!(st.ready && st.max_delay_ms >= 59_000, "{st:?}");
 
     let t = sim.now;
-    assert_eq!(sim.e.enable(Duration::from_secs(30), sim.at()), Ok(Enabled::Instant));
+    let r = sim.e.enable(Duration::from_secs(30), sim.at());
+    assert!(matches!(r, Ok(Enabled::Instant | Enabled::NextKeyframe)), "{r:?}");
     sim.secs(100.0);
 
-    // Sequence headers are re-sent first (script data only on reconnects),
-    // then a keyframe from ~30 s earlier.
+    // At the next keyframe that is 30 s old: sequence headers are re-sent
+    // first (script data only on reconnects), then that keyframe.
     let after = sim.sent_after(t);
-    assert_eq!(&after[0].1.payload[..2], &[0x17, 0]);
-    assert_eq!(&after[1].1.payload[..2], &[0xAF, 0]);
+    let at = after.iter().position(|(_, m)| m.payload.starts_with(&[0x17, 0])).expect("switched");
+    let switched = after[at].0;
+    assert!(switched - t <= Duration::from_secs(2), "switches within one keyframe interval");
+    assert_eq!(&after[at + 1].1.payload[..2], &[0xAF, 0]);
     assert!(after.iter().all(|(_, m)| m.type_id != msg_type::DATA_AMF0), "no onMetaData mid-stream");
-    let key = &after[2].1;
+    let key = &after[at + 2].1;
     assert!(is_keyframe(key));
     let key_src_ms = frame_no(key).unwrap() as u64 * 1000 / 30;
-    let behind = t.as_millis() as u64 - key_src_ms;
-    assert!((30_200..=32_300).contains(&behind), "replay starts {behind} ms back (within one keyframe interval)");
+    let behind = switched.as_millis() as u64 - key_src_ms;
+    assert!(
+        (30_200..=30_460).contains(&behind),
+        "replay starts {behind} ms back: the delay, not a keyframe interval more"
+    );
 
     // No interruption: video keeps flowing every frame interval across the switch.
     let video_sends: Vec<Duration> = sim.out.iter().filter(|(_, m)| frame_no(m).is_some()).map(|(at, _)| *at).collect();
@@ -118,15 +124,17 @@ fn ac2_enable_30s_with_full_60s_buffer_is_instant_and_seamless() {
     // Viewers stay ~30 s behind.
     let last = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap() as u64 * 1000 / 30;
     let lag = 100_000 - last;
-    assert!((30_000..=32_400).contains(&lag), "lag {lag} ms");
+    assert!((30_200..=30_500).contains(&lag), "lag {lag} ms");
     let st = sim.e.status(sim.at(), Duration::from_secs(30));
     assert_eq!(st.state, DelayState::Delayed);
     assert_eq!(st.target_delay_ms, 30_000);
-    assert!((30_200..=32_300).contains(&st.current_delay_ms));
+    assert!((30_200..=30_460).contains(&st.current_delay_ms));
 
-    // Upstream timeline is continuous: one frame between the last live frame and the replayed keyframe.
+    // Upstream timeline is continuous: the replayed keyframe follows one frame after the last message
+    // sent (audio can be up to one 21 ms audio frame ahead of video).
     let video_ts: Vec<u32> = sim.out.iter().filter(|(_, m)| frame_no(m).is_some()).map(|(_, m)| m.timestamp).collect();
-    assert!(video_ts.windows(2).all(|w| (33..=34).contains(&(w[1] - w[0]))), "video timestamps continuous");
+    let bad: Vec<_> = video_ts.windows(2).filter(|w| !(33..=56).contains(&(w[1] - w[0]))).collect();
+    assert!(bad.is_empty(), "video timestamps continuous: {bad:?}");
     assert_monotonic(&sim.out);
 }
 
@@ -164,25 +172,22 @@ fn ac3_go_live_jumps_to_the_live_edge_at_once() {
 }
 
 #[test]
-fn short_buffer_replays_what_it_has_then_reaches_the_target() {
+fn short_buffer_stays_live_then_jumps_back_the_full_delay() {
     let mut sim = Sim::new(60, stream());
     sim.secs(10.0);
-    let t = sim.now;
     assert_eq!(sim.e.enable(Duration::from_secs(30), sim.at()), Ok(Enabled::Building { buffer_grown: false }));
-    // At once: replay from the oldest keyframe (the stream start), ~10 s behind.
-    sim.secs(10.1);
-    assert_eq!(sim.sent_after(t).iter().find_map(|(_, m)| frame_no(m)), Some(0));
     sim.secs(25.0);
     let st = sim.e.status(sim.at(), Duration::from_secs(30));
     assert_eq!(st.state, DelayState::Buffering);
-    assert!((9_900..=10_100).contains(&st.current_delay_ms), "{st:?}");
-    assert!((0.75..0.85).contains(&st.progress.unwrap()), "{st:?}");
-    // Once 30 s are buffered: a second jump back to the full delay.
-    sim.secs(41.0);
+    assert_eq!(st.current_delay_ms, 0, "{st:?}");
+    assert!((0.8..0.86).contains(&st.progress.unwrap()), "{st:?}");
+    assert!(lag_ms(&sim) <= 50, "viewers stay live until 30 s are buffered");
+    // Then one jump back by the full delay.
+    sim.secs(31.0);
     let st = sim.e.status(sim.at(), Duration::from_secs(30));
     assert_eq!(st.state, DelayState::Delayed);
-    assert!((30_200..=32_300).contains(&st.current_delay_ms), "{st:?}");
-    assert!((30_000..=32_400).contains(&lag_ms(&sim)));
+    assert!((30_200..=30_460).contains(&st.current_delay_ms), "{st:?}");
+    assert!((30_200..=30_500).contains(&lag_ms(&sim)));
     assert!(max_video_gap(&sim) <= Duration::from_millis(50), "output never pauses");
     assert_monotonic(&sim.out);
 }
@@ -203,20 +208,22 @@ fn changing_delay_while_active() {
     sim.secs(130.0);
     sim.e.enable(Duration::from_secs(30), sim.at()).unwrap();
     sim.secs(140.0);
-    // Longer: jumps back at once (the buffer reaches 45 s).
+    // Longer: jumps back at the next keyframe that is 45 s old.
     sim.e.set_delay(Duration::from_secs(45), sim.at()).unwrap();
+    sim.secs(142.0);
     let st = sim.e.status(sim.at(), Duration::ZERO);
     assert_eq!(st.state, DelayState::Delayed);
-    assert!((45_200..=47_300).contains(&st.current_delay_ms), "{st:?}");
+    assert!((45_200..=45_460).contains(&st.current_delay_ms), "{st:?}");
     sim.secs(160.0);
-    assert!((45_000..=47_400).contains(&lag_ms(&sim)));
-    // Shorter: jumps forward at once.
+    assert!((45_200..=45_500).contains(&lag_ms(&sim)));
+    // Shorter: jumps forward at the next keyframe that is 20 s old.
     sim.e.set_delay(Duration::from_secs(20), sim.at()).unwrap();
+    sim.secs(162.0);
     let st = sim.e.status(sim.at(), Duration::ZERO);
     assert_eq!(st.state, DelayState::Delayed);
-    assert!((20_200..=22_300).contains(&st.current_delay_ms), "{st:?}");
-    sim.secs(161.0);
-    assert!((20_000..=22_400).contains(&lag_ms(&sim)));
+    assert!((20_200..=20_460).contains(&st.current_delay_ms), "{st:?}");
+    sim.secs(163.0);
+    assert!((20_200..=20_500).contains(&lag_ms(&sim)));
     assert!(max_video_gap(&sim) <= Duration::from_millis(50), "output never pauses");
     assert_monotonic(&sim.out);
 }

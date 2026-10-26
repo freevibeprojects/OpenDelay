@@ -207,13 +207,19 @@ async fn action(State(app): AppState, body: Bytes) -> Response {
     }
 }
 
+/// Routes as the API shows them: stored stream keys never leave the app.
+fn without_key(mut r: Route) -> Route {
+    r.key.clear();
+    r
+}
+
 async fn routes_list(State(app): AppState) -> Response {
-    respond(&app, Ok(String::new()), json!(app.routes()))
+    respond(&app, Ok(String::new()), json!(app.routes().into_iter().map(without_key).collect::<Vec<_>>()))
 }
 
 async fn route_create(State(app): AppState, body: Bytes) -> Response {
     match parse::<Route>(&body).and_then(|r| app.add_route(r)) {
-        Ok(r) => respond(&app, Ok("Route added.".into()), json!(r)),
+        Ok(r) => respond(&app, Ok("Route added.".into()), json!(without_key(r))),
         Err(e) => respond(&app, Err(e), Value::Null),
     }
 }
@@ -228,7 +234,7 @@ async fn route_update(State(app): AppState, Path(id): Path<String>, body: Bytes)
             } else {
                 "Route saved."
             };
-            respond(&app, Ok(msg.into()), json!(r))
+            respond(&app, Ok(msg.into()), json!(without_key(r)))
         }
         Err(e) => respond(&app, Err(e), Value::Null),
     }

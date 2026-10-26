@@ -185,6 +185,31 @@ async fn routes_crud_and_rules() {
 }
 
 #[tokio::test]
+async fn multistream_keys_are_kept_but_never_returned() {
+    let s = start().await;
+    let tok = [("X-OpenDelay-Token", s.app.token())];
+    let kick = r#"{"name":"Kick","preset":"kick","path":"kick","upstream":"rtmps://k.example:443/app","source":"twitch","key":"sk_secret"}"#;
+    let r = post(&s, "/api/routes", kick, &[]).await;
+    assert_eq!(r.code, 200, "{}", r.body);
+    assert_eq!(r.json()["data"]["key"], "", "not echoed");
+    let id = r.json()["data"]["id"].as_str().unwrap().to_owned();
+    // Saving without a key (the key is never shown) keeps the stored one.
+    let renamed = kick.replace("\"Kick\"", "\"Kick 2\"").replace("sk_secret", "");
+    assert_eq!(http(&s, "PUT", &format!("/api/routes/{id}"), &tok, &renamed).await.code, 200);
+    assert_eq!(s.app.routes()[1].key, "sk_secret");
+    let list = http(&s, "GET", "/api/routes", &[], "").await;
+    assert!(!list.body.contains("sk_secret"), "{}", list.body);
+    assert_eq!(list.json()["data"][1]["source"], "twitch");
+    let r = http(&s, "DELETE", "/api/routes/twitch", &tok, "").await;
+    assert_eq!(r.code, 400, "a route other routes send from is kept");
+    assert_eq!(
+        post(&s, "/api/routes", &kick.replace("sk_secret", "").replace("kick\",\"up", "k2\",\"up"), &[]).await.code,
+        400,
+        "key needed"
+    );
+}
+
+#[tokio::test]
 async fn network_twitch_and_diagnostics() {
     let s = start().await;
     let tok = [("X-OpenDelay-Token", s.app.token())];

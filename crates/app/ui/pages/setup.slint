@@ -13,7 +13,7 @@ component EncoderIllustration {
     in property <string> url;
     in property <string> platform;
     property <string> kind-label: root.encoder == 0 ? @tr("Service") : root.encoder == 1 ? @tr("Stream Type") : @tr("Destination");
-    property <string> kind-value: root.encoder == 0 ? @tr("Custom…") : root.encoder == 1 ? @tr("Custom Ingest") : @tr("Custom RTMP server");
+    property <string> kind-value: root.encoder == 0 ? "OpenDelay" : root.encoder == 1 ? @tr("Custom Ingest") : @tr("Custom RTMP server");
     property <string> server-label: root.encoder == 1 ? @tr("URL") : @tr("Server");
     height: 190px;
     accessible-role: image;
@@ -210,21 +210,29 @@ export component Onboarding inherits Rectangle {
                             selected <=> root.encoder;
                         }
                         Body {
-                            text: root.encoder == 0 ? @tr("In OBS open Settings → Stream, choose the service \"Custom…\", paste the server below and keep your usual {} stream key.", Strings.preset-name(root.preset.preset))
+                            text: root.encoder == 0 ? @tr("Click \"Add to OBS\", then in OBS open Settings → Stream, choose the service \"OpenDelay\" and keep your usual {} stream key. OBS then sets the keyframe interval and rate control by itself.", Strings.preset-name(root.preset.preset))
                                 : root.encoder == 1 ? @tr("In Streamlabs open Settings → Stream, choose \"Custom Ingest\", paste the URL below and your {} stream key.", Strings.preset-name(root.preset.preset))
                                 : @tr("Choose a custom RTMP server in your encoder, paste the URL below and use your {} stream key.", Strings.preset-name(root.preset.preset));
                         }
-                        Body {
-                            text: @tr("With a custom server your encoder no longer applies {}'s recommended settings. Set the keyframe interval to 2 s and the rate control to CBR (OBS: Settings → Output), otherwise viewers may only see a black screen.", Strings.preset-name(root.preset.preset));
+                        if root.encoder == 0: HorizontalLayout {
+                            alignment: start;
+                            Button {
+                                text: @tr("Add to OBS");
+                                kind: ButtonKind.primary;
+                                clicked => { AppState.add-to-obs(); }
+                            }
                         }
-                        CopyField {
+                        if root.encoder != 0: Body {
+                            text: @tr("With a custom server your encoder no longer applies {}'s recommended settings. Set the keyframe interval to 2 s and the rate control to CBR, otherwise viewers may only see a black screen.", Strings.preset-name(root.preset.preset));
+                        }
+                        if root.encoder != 0: CopyField {
                             value: root.local-url();
                             label: @tr("Server URL");
                             copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
                         }
                         EncoderIllustration {
                             encoder: root.encoder;
-                            url: root.local-url();
+                            url: root.encoder == 0 ? Strings.preset-name(root.preset.preset) : root.local-url();
                             platform: Strings.preset-name(root.preset.preset);
                         }
                     }
@@ -315,8 +323,16 @@ export component SetupPage {
                 padding: 20px;
                 spacing: 10px;
                 SectionTitle { text: @tr("Encoder settings"); }
-                Body { text: @tr("Use a custom RTMP server in your encoder with one of these URLs and keep the stream key from your platform. OpenDelay forwards the key unchanged."); }
-                Body { text: @tr("With a custom server the encoder no longer applies the platform's recommended settings: set the keyframe interval to 2 s and the rate control to CBR (OBS: Settings → Output), otherwise viewers may only see a black screen."); }
+                Body { text: @tr("OBS: click \"Add to OBS\", then in OBS open Settings → Stream and choose the service \"OpenDelay\" and the route. OBS then sets the keyframe interval and rate control by itself. Keep the stream key from your platform: OpenDelay forwards it unchanged."); }
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: @tr("Add to OBS");
+                        kind: ButtonKind.primary;
+                        clicked => { AppState.add-to-obs(); }
+                    }
+                }
+                Body { text: @tr("Other encoders: use a custom RTMP server with one of these URLs, a keyframe interval of 2 s and CBR rate control, otherwise viewers may only see a black screen."); }
                 for r in AppState.routes: HorizontalLayout {
                     spacing: 12px;
                     Text {

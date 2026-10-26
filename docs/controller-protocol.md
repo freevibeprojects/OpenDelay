@@ -92,7 +92,6 @@ names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
 | `delay_mode_off` | Delay mode is turned off. |
 | `invalid_in_mode` | The action is not valid right now (e.g. turning delay mode off while delayed). |
 | `transition_in_progress` | Going live is still waiting for a keyframe. |
-| `upstream_recovering` | The connection to the platform is being re-established. |
 | `unsustainable` | The requested delay does not fit in memory at the current bitrate. |
 | `transport_error` | The stream connection failed while applying the action. |
 | `invalid_value` | A parameter is out of range. |
@@ -171,8 +170,9 @@ All durations are milliseconds.
 }
 ```
 
-- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (delayed
-  less than requested until the buffer reaches back far enough), `delayed`,
+- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (waiting
+  for a keyframe that is as old as the requested delay; viewers keep seeing
+  what they saw before), `delayed`,
   `draining` (waiting for a keyframe to go live or shorten the delay) or
   `recovering` (platform connection lost, reconnecting).
 - `delay.currentMs` is how far behind the encoder the platform currently is;
@@ -196,7 +196,10 @@ The same actions are available over HTTP for scripts and the OBS dock:
 
 - `GET /api/status` — `{ "success": true, "message": "", "code": null, "status": {...} }`
 - `POST /api/action` with a request body like the WebSocket request above.
-- `GET /api/routes`, `POST /api/routes`, `PUT|DELETE /api/routes/{id}` — routes.
+- `GET /api/routes`, `POST /api/routes`, `PUT|DELETE /api/routes/{id}` — routes. A route
+  with `source` (another route's id) sends that route's encoder stream with its
+  own `key` (multistream). The key is write-only: responses always carry
+  `"key": ""`, and saving a route with an empty `key` keeps the stored one.
 - `GET|PUT /api/network` (`{"listenerMode": "local"|"lan"}`), `GET|PUT
   /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`
   (Twitch's ingest list, cached for 10 minutes).

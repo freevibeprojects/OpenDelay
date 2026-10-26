@@ -103,11 +103,8 @@ impl Ui {
     /// Run an action and toast its outcome.
     fn act(&self, action: Action, name: &str) -> Reply {
         let reply = self.app.act(&action);
-        let name = if name == "enable" && reply.success && reply.status.state == "buffering" {
-            "enable-building"
-        } else {
-            name
-        };
+        let building = reply.status.state == "buffering" && reply.status.delay.progress.is_some_and(|p| p < 1.0);
+        let name = if name == "enable" && reply.success && building { "enable-building" } else { name };
         let detail = reply.detail.map_or_else(|| ss(&reply.message), ss);
         self.state().invoke_report(ss(name), reply.success, ss(reply.code.unwrap_or("")), detail);
         self.poll_fast();
@@ -220,12 +217,20 @@ impl Ui {
                     enabled: r.enabled,
                     streaming: st.streams.iter().any(|x| x.route_id == r.id),
                     local_url: ss(format!("rtmp://127.0.0.1:{port}/{}", r.path)),
+                    source: ss(&r.source),
+                    source_name: ss(settings.routes.iter().find(|s| s.id == r.source).map_or("", |s| &s.name)),
+                    key: SharedString::default(),
+                    has_key: !r.key.is_empty(),
                 }
             })
             .collect();
         if self.shown.borrow().routes != routes {
-            let first = routes.iter().find(|r| r.enabled).or(routes.first());
+            let first = routes.iter().find(|r| r.enabled && r.source.is_empty()).or(routes.first());
             s.set_encoder_url(first.map_or_else(SharedString::default, |r| r.local_url.clone()));
+            let sources = routes.iter().filter(|r| r.source.is_empty());
+            s.set_route_sources(model(
+                sources.map(|r| Choice { value: r.id.clone(), label: r.name.clone() }).collect(),
+            ));
             s.set_routes(model(routes.clone()));
             self.shown.borrow_mut().routes = routes;
         }
@@ -299,6 +304,8 @@ impl Ui {
             path: item.path.to_string(),
             upstream: item.upstream.trim().to_owned(),
             enabled: item.enabled,
+            source: item.source.to_string(),
+            key: item.key.trim().to_owned(),
         };
         let result = if route.id.is_empty() {
             self.app.add_route(route)
@@ -596,6 +603,9 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         u.save(|s| s.overlay_color = name.to_string());
     }));
     s.on_save_route(with_ui!(|u, item| u.save_route(item)));
+    s.on_route_name(with_ui!(|u, id| {
+        ss(u.app.routes().into_iter().find(|r| r.id == id.as_str()).map_or(String::new(), |r| r.name))
+    }));
     s.on_delete_route(with_ui!(|u, id| match u.app.delete_route(&id) {
         Ok(()) => {
             u.refresh();
@@ -645,6 +655,12 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
                 u.state().set_lan_key(ss(&key));
                 u.state().invoke_report(ss("lan-key"), true, ss(""), ss(""));
             }
+            Err(p) => u.state().invoke_toast(u.problem(&p), ss("error")),
+        }
+    }));
+    s.on_add_to_obs(with_ui!(|u| {
+        match u.app.add_to_obs() {
+            Ok(()) => u.state().invoke_report(ss("obs"), true, ss(""), ss("")),
             Err(p) => u.state().invoke_toast(u.problem(&p), ss("error")),
         }
     }));

@@ -307,12 +307,13 @@ export component TextField {
     in property <bool> mono: false;
     in property <bool> invalid: false;
     in property <bool> enabled: true;
+    in property <bool> password: false;
     callback edited(string);
     callback accepted(string);
     min-height: 38px;
     accessible-role: text-input;
     accessible-label: root.label;
-    accessible-value: root.text;
+    accessible-value: root.password ? "" : root.text;
 
     public function copy-all() {
         input.select-all();
@@ -342,6 +343,7 @@ export component TextField {
                 read-only: root.read-only;
                 enabled: root.enabled;
                 single-line: true;
+                input-type: root.password ? InputType.password : InputType.text;
                 color: root.enabled ? Theme.text-primary : Theme.text-disabled;
                 font-size: 13px;
                 font-family: root.mono ? "monospace" : "Inter";
