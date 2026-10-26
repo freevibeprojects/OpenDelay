@@ -28,8 +28,7 @@ function render(st, err) {
   $("pill").style.setProperty("--tone", TONES[st.state] || TONES.offline);
   $("digits").textContent = Math.ceil((active ? d.currentMs : d.configuredMs) / 1000);
   $("number").classList.toggle("active", active);
-  $("caption").textContent = st.state === "delayed" ? OD.t("caption_delayed", OD.duration(Math.ceil(d.currentMs / 1000)))
-                                                    : OD.t("caption_" + st.state);
+  $("caption").textContent = OD.t("caption_" + st.state, OD.duration(Math.ceil(d.currentMs / 1000)));
   $("toggle").textContent = active ? OD.t("disable") : OD.t("enable");
   $("toggle").disabled = !d.modeEnabled || d.state === "draining";
   $("golive").disabled = !active || d.state === "draining";

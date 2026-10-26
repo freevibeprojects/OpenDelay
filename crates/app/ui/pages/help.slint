@@ -39,8 +39,8 @@ export component HelpPage {
                     text: @tr("Check that the server URL in your encoder matches a route (for example rtmp://127.0.0.1:1935/twitch) and that the route is enabled.");
                 }
                 Tip {
-                    title: @tr("Switching the delay takes long or pauses");
-                    text: @tr("The delay can only start on a keyframe. Set the keyframe interval in your encoder to 2 seconds and keep the buffer longer than the delay.");
+                    title: @tr("The delay is longer than set");
+                    text: @tr("A switch can only land on a keyframe, so the delay can be up to one keyframe interval longer than requested. Set the keyframe interval in your encoder to 2 seconds (Twitch requires that anyway).");
                 }
                 Tip {
                     title: @tr("The platform rejects the stream");

@@ -70,21 +70,23 @@ Each entry: the decision, then why.
   200 ms` old. The achieved delay is reported as the current delay (it is at
   most one keyframe interval longer than requested); the requested value is
   the target.
-- **Aging ("buffering")**: when no keyframe is old enough, output pauses at
-  the current position (no jump, nothing skipped or repeated) until unsent
-  content reaches the requested age. Viewers see a pause of up to the delay,
-  which is the only way to build a delay without replaying content.
+- **Growing ("buffering")**: when no keyframe is old enough, output jumps
+  back to the oldest buffered keyframe (viewers stop seeing new content at
+  once) and jumps back again as soon as a keyframe reaches the requested age.
+  Output never pauses: an earlier version paused until content aged, and
+  Twitch closed the connection after 30 s without data.
 - **"Buffer not ready"** is returned only when nothing usable has been
-  buffered yet (no keyframe received), since aging handles every other case.
+  buffered yet (no keyframe received), since growing handles every other case.
 - **Requested delay longer than the buffer**: the buffer grows to the delay
   (also persisted as the new buffer setting) and the message says the delay
   becomes fully effective once the buffer has filled.
-- **Changing the delay while active**: longer ages in place, shorter drains
-  faster than real time to the new value; differences under 0.5 s only
-  retarget.
-- **Going live** sends the backlog as fast as the upstream connection accepts
-  it. Bounds: 10 s or 10 000 messages, then a forced switch to the latest
-  keyframe (timestamps stay continuous).
+- **Changing the delay while active**: longer jumps back, shorter jumps
+  forward, each to the keyframe closest to the new value that is at least
+  that old; differences under 0.5 s only retarget.
+- **Going live** jumps forward to the latest unsent keyframe (or the next one
+  to arrive), skipping the backlog; timestamps stay continuous. An earlier
+  version sent the backlog faster than real time, which leaves viewers
+  behind unless their player skips ahead by itself.
 - **Default delay** is 30 s with a 60 s buffer, so the default enable is
   instant once the buffer has filled.
 - **Configuration re-sent at a jump** (SPEC §4.2 "sequence headers /

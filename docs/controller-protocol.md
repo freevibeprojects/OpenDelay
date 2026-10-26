@@ -91,7 +91,7 @@ names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
 | `already_live` | The stream is already live. |
 | `delay_mode_off` | Delay mode is turned off. |
 | `invalid_in_mode` | The action is not valid right now (e.g. turning delay mode off while delayed). |
-| `transition_in_progress` | Another transition (catching up to live, changing the delay) is still running. |
+| `transition_in_progress` | Going live is still waiting for a keyframe. |
 | `upstream_recovering` | The connection to the platform is being re-established. |
 | `unsustainable` | The requested delay does not fit in memory at the current bitrate. |
 | `transport_error` | The stream connection failed while applying the action. |
@@ -171,13 +171,15 @@ All durations are milliseconds.
 }
 ```
 
-- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (delay
-  building up), `delayed`, `draining` (catching up after "go live" or a
-  shorter delay) or `recovering` (platform connection lost, reconnecting).
+- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (delayed
+  less than requested until the buffer reaches back far enough), `delayed`,
+  `draining` (waiting for a keyframe to go live or shorten the delay) or
+  `recovering` (platform connection lost, reconnecting).
 - `delay.currentMs` is how far behind the encoder the platform currently is;
   `delay.targetMs` is the delay being established (0 when live).
 - `delay.ready` tells whether enabling the configured delay would be instant.
-- `delay.progress` (0–1) is set while buffering or draining.
+- `delay.progress` (0–1) is set while buffering: how far back the buffer
+  reaches towards the requested delay.
 - `health.findings` lists problems with the encoder settings, each with a
   `code` (`codec`, `keyframe_interval`, `keyframes_missing`, `b_frames`,
   `timestamps`, `slow_start`, `resolution`), a `severity` (`low`, `medium`,

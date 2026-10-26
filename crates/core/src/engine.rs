@@ -6,15 +6,19 @@
 //! Modes (SPEC §4):
 //! - **Live**: every message is sent as soon as it arrives.
 //! - **Delayed**: a message is sent `delay` after it arrived.
-//! - **Holding** ("buffering"): output pauses until unsent content is old
-//!   enough; used when the buffer cannot yet supply the requested delay.
-//! - **Draining**: the backlog is sent faster than real time until the lag
-//!   reaches the target (0 = back to live), bounded in time and messages.
+//! - **Growing** ("buffering"): delayed less than requested because the buffer
+//!   does not reach back that far yet; jumps back again as soon as it does.
+//! - **Cutting** ("draining"): waiting for a keyframe to jump forward to a
+//!   shorter delay or to the live edge.
 //!
-//! Switching delay on jumps the cursor back to the latest keyframe that is at
-//! least the requested delay old. Output timestamps are `source + offset`; the
-//! offset changes only at jumps, always so that the upstream timeline continues
-//! one frame after the last message sent. Audio and video are additionally
+//! Output never pauses: platforms drop an ingest that goes quiet (Twitch after
+//! 30 s), and viewers would see a frozen stream. Switching delay on jumps the
+//! cursor back to the latest keyframe that is at least the requested delay old
+//! (or the oldest one buffered); going live or shortening the delay jumps it
+//! forward to a keyframe, skipping content. Output timestamps are
+//! `source + offset`; the offset changes only at jumps, always so that the
+//! upstream timeline continues one frame after the last message sent. Audio
+//! and video are additionally
 //! clamped so neither track ever goes backwards; script data is clamped to the
 //! highest timestamp sent on any track.
 
@@ -31,10 +35,7 @@ use std::time::{Duration, Instant};
 const MAX_GOP: Duration = Duration::from_secs(30);
 /// The keyframe chosen for an instant switch is at least this much older than the delay.
 pub const SAFETY_MARGIN: Duration = Duration::from_millis(200);
-/// Bounds on a drain before falling back to a forced switch at a keyframe.
-pub const DRAIN_MAX_TIME: Duration = Duration::from_secs(10);
-pub const DRAIN_MAX_MESSAGES: u32 = 10_000;
-/// Delay changes smaller than this while delayed only retarget, without a pause or drain.
+/// Delay changes smaller than this while delayed only retarget, without a jump.
 const RETARGET_TOLERANCE: Duration = Duration::from_millis(500);
 /// Memory cap for one stream's buffer.
 pub const MAX_BUFFER_BYTES: u64 = 1 << 30;
@@ -140,10 +141,10 @@ impl fmt::Display for Refusal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DelayState {
     Live,
-    /// Waiting for content to age to the requested delay.
+    /// Delayed, but less than requested until the buffer reaches back far enough.
     Buffering,
     Delayed,
-    /// Catching up (towards live or a shorter delay).
+    /// Waiting for a keyframe to jump forward (to live or a shorter delay).
     Draining,
 }
 
@@ -164,7 +165,7 @@ pub struct EngineStatus {
     pub buffer_bytes: u64,
     /// Average input bitrate over the buffered span.
     pub bitrate_bps: u64,
-    /// 0..1 during buffering and draining.
+    /// 0..1 while buffering: how far back the buffer reaches towards the target.
     pub progress: Option<f32>,
     /// Set when the bitrate makes the buffer target unsustainable.
     pub degraded: Option<String>,
@@ -177,16 +178,18 @@ pub struct EngineStatus {
 pub enum Enabled {
     /// Jumped back: viewers now see delayed content.
     Instant,
-    /// Content must age first; `buffer_grown` when the buffer was enlarged to fit the delay.
+    /// Jumped back as far as the buffer reaches; the full delay follows once it
+    /// reaches further. `buffer_grown` when the buffer was enlarged to fit the delay.
     Building { buffer_grown: bool },
 }
 
+/// `delay`: how far output runs behind input; `target`: the requested delay.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mode {
     Live,
     Delayed { delay: Duration, target: Duration },
-    Holding { target: Duration },
-    Draining { target: Duration, started: Instant, sent: u32, from_lag: Duration },
+    Growing { delay: Duration, target: Duration },
+    Cutting { delay: Duration, target: Duration },
 }
 
 const AUDIO: usize = 0;
@@ -447,8 +450,21 @@ impl Engine {
     fn target(&self) -> Duration {
         match self.mode {
             Mode::Live => Duration::ZERO,
-            Mode::Delayed { target, .. } | Mode::Holding { target } | Mode::Draining { target, .. } => target,
+            Mode::Delayed { target, .. } | Mode::Growing { target, .. } | Mode::Cutting { target, .. } => target,
         }
+    }
+
+    /// How far output runs behind input (`None` when live).
+    fn delay(&self) -> Option<Duration> {
+        match self.mode {
+            Mode::Live => None,
+            Mode::Delayed { delay, .. } | Mode::Growing { delay, .. } | Mode::Cutting { delay, .. } => Some(delay),
+        }
+    }
+
+    /// Latest keyframe at least `delay + SAFETY_MARGIN` old.
+    fn key_at_least(&self, delay: Duration, now: Instant) -> Option<u64> {
+        self.keys.iter().rev().copied().find(|&k| self.age(k, now) >= delay + SAFETY_MARGIN)
     }
 
     fn fill_pct(&self, now: Instant, of: Duration) -> u8 {
@@ -456,11 +472,12 @@ impl Engine {
         (fill.as_secs_f64() / of.as_secs_f64().max(0.001) * 100.0).min(100.0) as u8
     }
 
-    /// Switch the delay on (SPEC §4.2).
+    /// Switch the delay on (SPEC §4.2): jump back to a keyframe `delay` old,
+    /// or as far back as the buffer reaches and grow from there.
     pub fn enable(&mut self, delay: Duration, now: Instant) -> Result<Enabled, Refusal> {
         match self.mode {
             Mode::Live => {}
-            Mode::Draining { .. } => return Err(Refusal::TransitionInProgress),
+            Mode::Cutting { .. } => return Err(Refusal::TransitionInProgress),
             _ => return Err(Refusal::AlreadyActive),
         }
         if delay.is_zero() || delay > MAX_DELAY {
@@ -474,37 +491,36 @@ impl Engine {
         }
         let buffer_grown = delay > self.retain;
         self.retain = self.retain.max(delay);
-        let want = delay + SAFETY_MARGIN;
-        let key = self.keys.iter().rev().copied().find(|&k| self.age(k, now) >= want);
-        Ok(match key {
-            Some(k) => {
-                let actual = self.age(k, now);
-                self.start_at(k);
-                self.mode = Mode::Delayed { delay: actual, target: delay };
-                Enabled::Instant
-            }
-            None => {
-                self.mode = Mode::Holding { target: delay };
-                Enabled::Building { buffer_grown }
-            }
-        })
+        if let Some(k) = self.key_at_least(delay, now) {
+            self.mode = Mode::Delayed { delay: self.age(k, now), target: delay };
+            self.start_at(k);
+            return Ok(Enabled::Instant);
+        }
+        // Not that much buffered yet: replay all there is now (viewers stop
+        // seeing new content at once), the rest follows in `retarget`.
+        let oldest = self.keys.front().copied().filter(|&k| k < self.cursor);
+        self.mode = Mode::Growing { delay: oldest.map_or(Duration::ZERO, |k| self.age(k, now)), target: delay };
+        if let Some(k) = oldest {
+            self.start_at(k);
+        }
+        Ok(Enabled::Building { buffer_grown })
     }
 
-    /// Return to live (SPEC §4.3): drain the backlog, then rejoin the live edge.
+    /// Return to live (SPEC §4.3): jump forward to the latest keyframe.
     pub fn go_live(&mut self, now: Instant) -> Result<(), Refusal> {
         match self.mode {
             Mode::Live => Err(Refusal::AlreadyLive),
-            Mode::Draining { .. } => Err(Refusal::TransitionInProgress),
+            Mode::Cutting { target, .. } if target.is_zero() => Err(Refusal::TransitionInProgress),
             _ => {
-                let from_lag = self.lag(now);
-                self.mode = Mode::Draining { target: Duration::ZERO, started: now, sent: 0, from_lag };
+                self.mode = Mode::Cutting { delay: self.delay().unwrap_or_default(), target: Duration::ZERO };
+                self.retarget(now);
                 Ok(())
             }
         }
     }
 
-    /// Change the delay while it is active: longer delays age in place,
-    /// shorter ones drain. Inactive engines have nothing to change.
+    /// Change the delay while it is active: longer delays jump back, shorter
+    /// ones forward, each at a keyframe. Inactive engines have nothing to change.
     pub fn set_delay(&mut self, delay: Duration, now: Instant) -> Result<(), Refusal> {
         if delay.is_zero() || delay > MAX_DELAY {
             return Err(Refusal::InvalidValue("delay_range"));
@@ -512,22 +528,40 @@ impl Engine {
         if let Some(max) = self.sustainable_max().filter(|max| delay > *max) {
             return Err(Refusal::Unsustainable { max_secs: max.as_secs() as u32 });
         }
-        self.mode = match self.mode {
+        let current = match self.mode {
             Mode::Live => return Ok(()),
-            Mode::Draining { .. } => return Err(Refusal::TransitionInProgress),
-            Mode::Holding { .. } => Mode::Holding { target: delay },
-            Mode::Delayed { delay: current, .. } => {
-                if delay > current + RETARGET_TOLERANCE {
-                    Mode::Holding { target: delay }
-                } else if delay + RETARGET_TOLERANCE < current {
-                    Mode::Draining { target: delay, started: now, sent: 0, from_lag: current }
-                } else {
-                    Mode::Delayed { delay: current, target: delay }
-                }
-            }
+            Mode::Cutting { target, .. } if target.is_zero() => return Err(Refusal::TransitionInProgress),
+            Mode::Delayed { delay, .. } | Mode::Growing { delay, .. } | Mode::Cutting { delay, .. } => delay,
+        };
+        self.mode = if delay > current + RETARGET_TOLERANCE {
+            Mode::Growing { delay: current, target: delay }
+        } else if delay + RETARGET_TOLERANCE < current {
+            Mode::Cutting { delay: current, target: delay }
+        } else {
+            Mode::Delayed { delay: current, target: delay }
         };
         self.retain = self.retain.max(delay);
+        self.retarget(now);
         Ok(())
+    }
+
+    /// Growing / cutting: jump to the keyframe that reaches the target as soon
+    /// as there is one. Returns whether it jumped.
+    fn retarget(&mut self, now: Instant) -> bool {
+        let (key, target) = match self.mode {
+            Mode::Growing { target, .. } => (self.key_at_least(target, now), target),
+            Mode::Cutting { target, .. } => {
+                let min_age = if target.is_zero() { Duration::ZERO } else { target + SAFETY_MARGIN };
+                // Forward only: keyframes not sent yet, newest first.
+                let mut ahead = self.keys.iter().rev().copied().take_while(|&k| k >= self.cursor);
+                (ahead.find(|&k| self.age(k, now) >= min_age), target)
+            }
+            _ => return false,
+        };
+        let Some(k) = key else { return false };
+        self.mode = if target.is_zero() { Mode::Live } else { Mode::Delayed { delay: self.age(k, now), target } };
+        self.start_at(k);
+        true
     }
 
     /// Next output action.
@@ -553,32 +587,14 @@ impl Engine {
                     }
                 }
             }
-            let Some(e) = self.entry(self.cursor) else {
-                match self.mode {
-                    Mode::Draining { target, .. } if target.is_zero() => self.mode = Mode::Live,
-                    Mode::Draining { target, .. } => self.mode = Mode::Holding { target },
-                    _ => {}
-                }
-                return self.idle();
-            };
-            let age = now.saturating_duration_since(e.at);
-            match self.mode {
-                Mode::Live => {}
-                Mode::Delayed { delay, .. } if age < delay => return Poll::Wait(e.at + delay),
-                Mode::Delayed { .. } => {}
-                Mode::Holding { target } if age < target => return Poll::Wait(e.at + target),
-                Mode::Holding { target } => self.mode = Mode::Delayed { delay: target, target },
-                Mode::Draining { target, .. } if !target.is_zero() && age <= target => {
-                    self.mode = Mode::Delayed { delay: target, target };
-                    continue;
-                }
-                Mode::Draining { target, started, sent, from_lag } => {
-                    if now.saturating_duration_since(started) >= DRAIN_MAX_TIME || sent >= DRAIN_MAX_MESSAGES {
-                        self.force_switch(target, now);
-                        continue;
-                    }
-                    self.mode = Mode::Draining { target, started, sent: sent + 1, from_lag };
-                }
+            if self.retarget(now) {
+                continue;
+            }
+            let Some(e) = self.entry(self.cursor) else { return self.idle() };
+            if let Some(delay) = self.delay()
+                && now.saturating_duration_since(e.at) < delay
+            {
+                return Poll::Wait(e.at + delay);
             }
             let m = self.out_message(self.cursor);
             self.cursor += 1;
@@ -588,20 +604,6 @@ impl Engine {
 
     fn idle(&self) -> Poll {
         if self.input_done { Poll::Finished } else { Poll::Idle }
-    }
-
-    /// Drain bound reached: jump forward to the latest keyframe that keeps
-    /// at least `target` of delay (the live edge for 0).
-    fn force_switch(&mut self, target: Duration, now: Instant) {
-        let key = self.keys.iter().rev().copied().find(|&k| k >= self.cursor && self.age(k, now) >= target);
-        if let Some(k) = key {
-            self.start_at(k);
-        }
-        self.mode = if target.is_zero() {
-            Mode::Live
-        } else {
-            Mode::Delayed { delay: key.map_or(target, |k| self.age(k, now).max(target)), target }
-        };
     }
 
     /// Move the cursor to key entry `k`, continue the upstream timeline one
@@ -687,19 +689,6 @@ impl Engine {
         }
     }
 
-    /// Current lag of the output behind the input.
-    fn lag(&self, now: Instant) -> Duration {
-        match self.mode {
-            Mode::Live => Duration::ZERO,
-            Mode::Delayed { delay, .. } => delay,
-            Mode::Holding { .. } => match self.cursor.checked_sub(1).and_then(|i| self.entry(i)) {
-                Some(e) => now.saturating_duration_since(e.at),
-                None => Duration::ZERO,
-            },
-            Mode::Draining { .. } => self.age(self.cursor, now),
-        }
-    }
-
     fn bytes_per_sec(&self) -> Option<f64> {
         let span = self.buffered().as_secs_f64();
         (span >= 1.0).then(|| self.bytes as f64 / span)
@@ -725,20 +714,17 @@ impl Engine {
 
     /// Status for display; `requested` is the delay an enable would use.
     pub fn status(&self, now: Instant, requested: Duration) -> EngineStatus {
-        let lag = self.lag(now);
+        let lag = self.delay().unwrap_or_default();
+        let max_delay = self.keys.front().map_or(Duration::ZERO, |&k| self.age(k, now));
         let (state, progress) = match self.mode {
             Mode::Live => (DelayState::Live, None),
             Mode::Delayed { .. } => (DelayState::Delayed, None),
-            Mode::Holding { target } => {
-                (DelayState::Buffering, Some((lag.as_secs_f32() / target.as_secs_f32().max(0.001)).min(1.0)))
+            Mode::Growing { target, .. } => {
+                let reach = max_delay.as_secs_f32() / (target + SAFETY_MARGIN).as_secs_f32();
+                (DelayState::Buffering, Some(reach.min(1.0)))
             }
-            Mode::Draining { target, from_lag, .. } => {
-                let span = from_lag.saturating_sub(target).as_secs_f32().max(0.001);
-                let left = lag.saturating_sub(target).as_secs_f32();
-                (DelayState::Draining, Some((1.0 - left / span).clamp(0.0, 1.0)))
-            }
+            Mode::Cutting { .. } => (DelayState::Draining, None),
         };
-        let max_delay = self.keys.front().map_or(Duration::ZERO, |&k| self.age(k, now));
         let bps = self.bytes_per_sec();
         let limit = self.sustainable_max().filter(|max| self.retain > *max);
         let degraded = limit.map(|max| {
@@ -861,9 +847,21 @@ pub(crate) mod tests {
         assert_eq!(e.enable(Duration::from_secs(30), t0), Ok(Enabled::Building { buffer_grown: false }));
         assert_eq!(e.enable(Duration::from_secs(30), t0), Err(Refusal::AlreadyActive));
         assert_eq!(e.check_retain(Duration::from_secs(10)).unwrap_err().code(), "invalid_in_mode");
-        e.go_live(t0).unwrap();
-        assert_eq!(e.go_live(t0), Err(Refusal::TransitionInProgress));
-        assert_eq!(e.enable(Duration::from_secs(5), t0), Err(Refusal::TransitionInProgress));
+        e.go_live(t0).unwrap(); // the keyframe was never sent: live at once
+        assert_eq!(e.go_live(t0), Err(Refusal::AlreadyLive));
+        // Going live waits for a keyframe that has not been sent yet.
+        let t1 = t0 + Duration::from_secs(2);
+        drain(&mut e, t0);
+        e.push(video(33, false), t0);
+        assert_eq!(e.enable(Duration::from_secs(1), t1), Ok(Enabled::Instant));
+        drain(&mut e, t1);
+        e.go_live(t1).unwrap();
+        assert_eq!(e.status(t1, Duration::ZERO).state, DelayState::Draining);
+        assert_eq!(e.go_live(t1), Err(Refusal::TransitionInProgress));
+        assert_eq!(e.enable(Duration::from_secs(5), t1), Err(Refusal::TransitionInProgress));
+        e.push(video(66, true), t1);
+        assert!(!drain(&mut e, t1).is_empty());
+        assert_eq!(e.status(t1, Duration::ZERO).state, DelayState::Live);
         for r in [Refusal::NoStream, Refusal::BufferNotReady { fill_pct: 40 }, Refusal::Unsustainable { max_secs: 9 }] {
             assert!(!r.to_string().is_empty() && !r.code().is_empty());
         }

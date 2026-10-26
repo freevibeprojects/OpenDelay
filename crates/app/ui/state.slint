@@ -53,7 +53,7 @@ export global AppState {
     in property <float> buffer-fill;
     in property <string> buffer-text: "—";
     in property <bool> ready;
-    // 0..1 while buffering/draining, -1 otherwise
+    // 0..1 while buffering, -1 otherwise
     in property <float> progress: -1;
     // buffer length that fits in memory at this bitrate (-1: no limit)
     in property <int> buffer-limit-s: -1;

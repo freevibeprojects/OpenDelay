@@ -427,22 +427,25 @@ impl Relay {
         if d > cfg.buffer {
             self.update_config(|c| c.buffer = d);
         }
-        let how = if results.contains(&Enabled::Instant) { "instant switch" } else { "building up" };
+        let how = if results.contains(&Enabled::Instant) { "instant switch" } else { "replaying what is buffered" };
         self.log_all(&format!("Delay enabled: {} ({how})", secs(d)));
         Ok(if results.contains(&Enabled::Instant) {
             format!("Delay on: viewers are now {} behind.", secs(d))
         } else if d > cfg.buffer || results.contains(&Enabled::Building { buffer_grown: true }) {
             format!("Buffer enlarged to {}; the delay becomes fully effective once it has filled.", secs(d))
         } else {
-            format!("Delay is building up to {}.", secs(d))
+            format!(
+                "Delay on: viewers see everything buffered so far; it reaches {} once that much is buffered.",
+                secs(d)
+            )
         })
     }
 
     /// Return to live.
     pub fn go_live(&self) -> Result<String, Refusal> {
         self.apply(|e, now| e.go_live(now))?;
-        self.log_all("Delay disabled: draining to the live edge");
-        Ok("Going live: catching up with the live edge.".into())
+        self.log_all("Delay disabled: jumping to the live edge");
+        Ok("Going live: viewers jump to the live edge.".into())
     }
 
     pub fn toggle_delay(&self) -> Result<String, Refusal> {

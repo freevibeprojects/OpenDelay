@@ -186,8 +186,8 @@ export component DashboardPage {
                     text: AppState.state == "offline" ? @tr("Delay that will be used. Start streaming in your encoder to begin.")
                         : AppState.state == "connecting" ? @tr("Connecting to the platform…")
                         : AppState.state == "recovering" ? @tr("Reconnecting to the platform (attempt {})…", AppState.recovery-attempt)
-                        : AppState.state == "buffering" ? @tr("Building the delay up to {}: viewers see a pause until it is reached.", Strings.duration(AppState.target-delay-s))
-                        : AppState.state == "draining" ? @tr("Catching up with the live edge…")
+                        : AppState.state == "buffering" ? @tr("Viewers are {} behind; the delay grows to {} once that much is buffered.", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
+                        : AppState.state == "draining" ? @tr("Switching at the next keyframe…")
                         : AppState.state == "delayed" ? @tr("Viewers are {} behind (target {}).", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
                         : AppState.ready ? @tr("Viewers see you live. The delay can start instantly.")
                         : @tr("Viewers see you live. The buffer is still filling; enabling now builds the delay up.");

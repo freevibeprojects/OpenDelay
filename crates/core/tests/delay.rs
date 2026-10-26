@@ -20,8 +20,6 @@ struct Sim {
     next: usize,
     /// (send time, message)
     out: Vec<(Duration, Message)>,
-    /// Max messages sent per step (`usize::MAX` = unlimited uplink).
-    per_step: usize,
 }
 
 impl Sim {
@@ -33,7 +31,6 @@ impl Sim {
             input,
             next: 0,
             out: Vec::new(),
-            per_step: usize::MAX,
         }
     }
 
@@ -51,13 +48,9 @@ impl Sim {
                 self.e.push(self.input[self.next].clone(), now);
                 self.next += 1;
             }
-            let mut sent = 0;
-            while sent < self.per_step {
+            loop {
                 match self.e.poll(now) {
-                    Poll::Send(m) => {
-                        self.out.push((self.now, m));
-                        sent += 1;
-                    }
+                    Poll::Send(m) => self.out.push((self.now, m)),
                     Poll::ResetHeaders => {}
                     _ => break,
                 }
@@ -137,73 +130,60 @@ fn ac2_enable_30s_with_full_60s_buffer_is_instant_and_seamless() {
     assert_monotonic(&sim.out);
 }
 
+/// Largest gap between consecutive video frames sent (output never stalls).
+fn max_video_gap(sim: &Sim) -> Duration {
+    let sends: Vec<Duration> = sim.out.iter().filter(|(_, m)| frame_no(m).is_some()).map(|(at, _)| *at).collect();
+    sends.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+}
+
+/// How far behind the input the last video frame sent is, in ms.
+fn lag_ms(sim: &Sim) -> u64 {
+    let last = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap() as u64 * 1000 / 30;
+    sim.now.as_millis() as u64 - last
+}
+
 #[test]
-fn ac3_go_live_drains_and_returns_to_live_edge() {
+fn ac3_go_live_jumps_to_the_live_edge_at_once() {
     let mut sim = Sim::new(60, stream());
     sim.secs(70.0);
     sim.e.enable(Duration::from_secs(30), sim.at()).unwrap();
     sim.secs(90.0);
     let t = sim.now;
     sim.e.go_live(sim.at()).unwrap();
-    assert_eq!(sim.e.status(sim.at(), Duration::from_secs(30)).state, DelayState::Draining);
-    sim.secs(91.0);
-    let st = sim.e.status(sim.at(), Duration::from_secs(30));
-    assert_eq!(st.state, DelayState::Live);
-    // Backlog went out faster than real time (no frames skipped) and output is now at the live edge.
-    let frames: Vec<u32> = sim.sent_after(t).iter().filter_map(|(_, m)| frame_no(m)).collect();
-    assert!(frames.windows(2).all(|w| w[1] == w[0] + 1), "drain sends every frame in order");
-    let last = *frames.last().unwrap() as u64 * 1000 / 30;
-    assert!(91_000 - last <= 50, "back at the live edge");
-    assert_monotonic(&sim.out);
-    sim.secs(95.0);
-    let last = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap() as u64 * 1000 / 30;
-    assert!(95_000 - last <= 50, "passthrough after going live");
-    assert_monotonic(&sim.out);
-}
-
-#[test]
-fn ac3_drain_bound_forces_switch_at_keyframe() {
-    let mut sim = Sim::new(60, stream());
-    sim.secs(70.0);
-    sim.e.enable(Duration::from_secs(60), sim.at()).unwrap();
-    sim.secs(80.0);
-    // Uplink barely faster than the stream: the 60 s backlog cannot drain in time.
-    sim.per_step = 1;
-    let t = sim.now;
-    sim.e.go_live(sim.at()).unwrap();
-    sim.secs(89.0);
-    assert_eq!(sim.e.status(sim.at(), Duration::ZERO).state, DelayState::Draining);
-    sim.secs(90.5);
-    assert_eq!(sim.e.status(sim.at(), Duration::ZERO).state, DelayState::Live, "forced switch after 10 s");
-    sim.per_step = usize::MAX;
-    sim.secs(92.0);
+    assert_eq!(sim.e.status(sim.at(), Duration::from_secs(30)).state, DelayState::Live);
+    sim.secs(90.1);
+    // Skips forward to the latest keyframe (at most one keyframe interval behind), never faster than real time after.
     let frames: Vec<&Message> =
         sim.sent_after(t).into_iter().map(|(_, m)| m).filter(|m| frame_no(m).is_some()).collect();
-    let jump = frames.windows(2).position(|w| frame_no(w[1]).unwrap() > frame_no(w[0]).unwrap() + 1);
-    let jump = jump.expect("forced switch skips forward");
-    assert!(is_keyframe(frames[jump + 1]), "forced switch lands on a keyframe");
-    let last = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap() as u64 * 1000 / 30;
-    assert!(92_000 - last <= 50, "live edge reached");
+    assert!(is_keyframe(frames[0]), "the cut lands on a keyframe");
+    assert!(lag_ms(&sim) <= 50, "back at the live edge");
+    sim.secs(95.0);
+    assert!(lag_ms(&sim) <= 50, "passthrough after going live");
+    assert!(max_video_gap(&sim) <= Duration::from_millis(50), "output never stalls");
     assert_monotonic(&sim.out);
 }
 
 #[test]
-fn short_buffer_ages_in_place_without_jumping() {
+fn short_buffer_replays_what_it_has_then_reaches_the_target() {
     let mut sim = Sim::new(60, stream());
     sim.secs(10.0);
     let t = sim.now;
-    let last_live = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap();
     assert_eq!(sim.e.enable(Duration::from_secs(30), sim.at()), Ok(Enabled::Building { buffer_grown: false }));
+    // At once: replay from the oldest keyframe (the stream start), ~10 s behind.
+    sim.secs(10.1);
+    assert_eq!(sim.sent_after(t).iter().find_map(|(_, m)| frame_no(m)), Some(0));
     sim.secs(25.0);
     let st = sim.e.status(sim.at(), Duration::from_secs(30));
     assert_eq!(st.state, DelayState::Buffering);
-    assert!((0.45..0.55).contains(&st.progress.unwrap()), "{st:?}");
-    assert!(sim.sent_after(t).is_empty(), "output holds while content ages");
+    assert!((9_900..=10_100).contains(&st.current_delay_ms), "{st:?}");
+    assert!((0.75..0.85).contains(&st.progress.unwrap()), "{st:?}");
+    // Once 30 s are buffered: a second jump back to the full delay.
     sim.secs(41.0);
     let st = sim.e.status(sim.at(), Duration::from_secs(30));
-    assert_eq!((st.state, st.current_delay_ms), (DelayState::Delayed, 30_000));
-    let resumed = sim.sent_after(t).iter().find_map(|(_, m)| frame_no(m)).unwrap();
-    assert_eq!(resumed, last_live + 1, "no jump: output continues with the next frame");
+    assert_eq!(st.state, DelayState::Delayed);
+    assert!((30_200..=32_300).contains(&st.current_delay_ms), "{st:?}");
+    assert!((30_000..=32_400).contains(&lag_ms(&sim)));
+    assert!(max_video_gap(&sim) <= Duration::from_millis(50), "output never pauses");
     assert_monotonic(&sim.out);
 }
 
@@ -223,20 +203,21 @@ fn changing_delay_while_active() {
     sim.secs(130.0);
     sim.e.enable(Duration::from_secs(30), sim.at()).unwrap();
     sim.secs(140.0);
-    // Longer: ages in place to the new delay.
+    // Longer: jumps back at once (the buffer reaches 45 s).
     sim.e.set_delay(Duration::from_secs(45), sim.at()).unwrap();
-    assert_eq!(sim.e.status(sim.at(), Duration::ZERO).state, DelayState::Buffering);
+    let st = sim.e.status(sim.at(), Duration::ZERO);
+    assert_eq!(st.state, DelayState::Delayed);
+    assert!((45_200..=47_300).contains(&st.current_delay_ms), "{st:?}");
     sim.secs(160.0);
-    let st = sim.e.status(sim.at(), Duration::ZERO);
-    assert_eq!((st.state, st.current_delay_ms), (DelayState::Delayed, 45_000));
-    // Shorter: drains to the new delay.
+    assert!((45_000..=47_400).contains(&lag_ms(&sim)));
+    // Shorter: jumps forward at once.
     sim.e.set_delay(Duration::from_secs(20), sim.at()).unwrap();
-    assert_eq!(sim.e.status(sim.at(), Duration::ZERO).state, DelayState::Draining);
-    sim.secs(161.0);
     let st = sim.e.status(sim.at(), Duration::ZERO);
-    assert_eq!((st.state, st.current_delay_ms), (DelayState::Delayed, 20_000));
-    let last = sim.out.iter().rev().find_map(|(_, m)| frame_no(m)).unwrap() as u64 * 1000 / 30;
-    assert!((19_900..=20_100).contains(&(161_000 - last)));
+    assert_eq!(st.state, DelayState::Delayed);
+    assert!((20_200..=22_300).contains(&st.current_delay_ms), "{st:?}");
+    sim.secs(161.0);
+    assert!((20_000..=22_400).contains(&lag_ms(&sim)));
+    assert!(max_video_gap(&sim) <= Duration::from_millis(50), "output never pauses");
     assert_monotonic(&sim.out);
 }
 

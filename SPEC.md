@@ -90,9 +90,10 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
 - On request with delay D:
   - Find the latest keyframe that is at least D old (with a small safety
     margin) and start sending from there.
-  - If the buffer does not yet contain content D old, do not jump; instead
-    let content age in place until the target is reached, then report the
-    delay as active.
+  - If the buffer does not yet contain content D old, jump back to the
+    oldest buffered keyframe now, and jump back again as soon as a keyframe
+    D old is buffered. Output never pauses: platforms drop an ingest that
+    sends nothing (Twitch after 30 s) and viewers would see a frozen stream.
   - Make the switch only at a message boundary, so no RTMP message is cut
     mid-way.
 - The platform must see continuous, monotonically increasing timestamps
@@ -104,11 +105,11 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
   buffer has filled.
 
 ### 4.3 Switching delay OFF (go live)
-- Drain the backlog to the platform faster than real time, then rejoin the
-  live edge at a keyframe.
+- Jump forward to the latest keyframe (viewers skip the delayed backlog), or
+  at the next keyframe when none is left to send. A shorter delay works the
+  same way. (Sending the backlog faster than real time does not shorten what
+  viewers see unless their player skips ahead by itself.)
 - Keep timestamps continuous across the transition.
-- Bound the drain (time and chunk count) and fall back to a forced switch at
-  a keyframe if the bound is reached.
 
 ### 4.4 Actions
 All of these must be available to every control surface (UI, hotkeys, tray,

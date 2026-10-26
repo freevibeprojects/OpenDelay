@@ -9,7 +9,7 @@ broadcast delay on and off at any time without stopping the stream.
 - Local RTMP relay (`rtmp://127.0.0.1:1935/<route>`) to `rtmp://` or `rtmps://`
   upstreams, several routes live at once.
 - Instant delay: a rolling buffer lets the delay start by replaying from the
-  past; going live drains the backlog and rejoins the live edge.
+  past; going live jumps straight back to the live edge.
 - Desktop UI, OBS dock and on-stream overlay, global hotkeys, tray menu, a local
   HTTP API and a WebSocket protocol for hardware controllers
   ([docs/controller-protocol.md](docs/controller-protocol.md)).
