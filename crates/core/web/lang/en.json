@@ -22,7 +22,7 @@
  "emergency_active": "Emergency stop is active",
  "overlay_show": "Show overlay",
  "overlay_hide": "Hide overlay",
- "toggle_overlay": "Show or hide the overlay",
+ "toggle_overlay": "Overlay on stream",
  "shorter": "Shorter delay",
  "longer": "Longer delay",
  "caption_offline": "Waiting for your encoder",

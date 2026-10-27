@@ -15,26 +15,34 @@ function hms(ms) {
   return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// The pill is the status live region: only real changes are written, so polling stays silent.
+function pill(text) {
+  if ($("pill").textContent !== text) $("pill").textContent = text;
+}
+
 function render(st, err) {
-  // Unreachable: grey out the last numbers and controls instead of showing them as current.
+  // Unreachable: grey out the last numbers instead of showing them as current.
   document.body.classList.toggle("stale", !st);
-  ["toggle", "golive", "minus", "plus", "overlay"].forEach((id) => { $(id).inert = !st; });
   if (!st) {
-    $("pill").textContent = OD.t("unreachable");
+    pill(OD.t("unreachable"));
     $("pill").style.setProperty("--tone", "var(--error)");
     return;
   }
   last = st;
   const d = st.delay;
   const active = st.connected && ["delayed", "buffering", "draining"].includes(d.state);
-  $("pill").textContent = OD.t("state_" + st.state);
+  pill(OD.t("state_" + st.state));
   $("pill").style.setProperty("--tone", TONES[st.state] || TONES.offline);
   $("digits").textContent = Math.ceil((active ? d.currentMs : d.configuredMs) / 1000);
   $("number").classList.toggle("active", active);
   $("caption").textContent = OD.t("caption_" + st.state, OD.duration(Math.ceil(d.currentMs / 1000)));
   $("toggle").textContent = active ? OD.t("disable") : OD.t("enable");
-  $("toggle").disabled = !d.modeEnabled || d.state === "draining";
+  const hadFocus = document.activeElement === $("golive");
+  // Stays enabled while going live so keyboard focus has somewhere to land; a press then only says to wait.
+  $("toggle").disabled = !d.modeEnabled;
   $("golive").disabled = !active || d.state === "draining";
+  // A focused button that just got disabled would drop keyboard focus to the page.
+  if (hadFocus && $("golive").disabled) $("toggle").focus();
   if (pendingDelay === null) $("delay").textContent = OD.duration(d.configuredMs / 1000);
   const fill = d.bufferTargetMs ? Math.min(1, d.bufferFillMs / d.bufferTargetMs) : 0;
   $("bufferbar").style.width = `${Math.round(fill * 100)}%`;
@@ -45,6 +53,7 @@ function render(st, err) {
   $("banner").style.display = st.emergencyStop ? "block" : "none";
   $("overlay").textContent = st.overlayVisible ? "◉" : "○";
   $("overlay").title = st.overlayVisible ? OD.t("overlay_hide") : OD.t("overlay_show");
+  $("overlay").setAttribute("aria-pressed", String(st.overlayVisible));
   const findings = (st.health && st.health.findings) || [];
   $("health").style.display = findings.length ? "block" : "none";
   $("health").textContent = findings.map((f) => "⚠ " + OD.t("health_" + f.code)).join("  ");
@@ -76,7 +85,14 @@ function holdable(button, dir) {
   const stop = () => { clearTimeout(timer); timer = 0; };
   button.addEventListener("pointerdown", () => { ticks = 0; step(dir); timer = setTimeout(repeat, 450); });
   ["pointerup", "pointerleave", "pointercancel"].forEach((e) => button.addEventListener(e, stop));
-  button.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); step(dir); } });
+  // Keyboard: Enter/Space step this way, arrows step either way; held keys speed up like a held pointer.
+  button.addEventListener("keydown", (e) => {
+    const d = { Enter: dir, " ": dir, ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    ticks = e.repeat ? ticks + 1 : 0;
+    step(ticks > 12 ? 5 * d : d);
+  });
 }
 
 $("toggle").onclick = () => {
