@@ -506,3 +506,36 @@ async fn a_route_sending_another_routes_stream_can_be_stopped_mid_stream() {
     app.shutdown().await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn an_encoder_reconnecting_while_delayed_stays_delayed() {
+    let twitch = MockIngest::start(Behaviour::default()).await;
+    let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
+    let (relay, addr) = relay_for(
+        vec![route("t", format!("rtmp://{}/app", twitch.addr))],
+        RelayOptions { delay, ..Default::default() },
+    )
+    .await;
+    let stream = synthetic_stream(60, 15); // 2 s, keyframe every 0.5 s
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+    enc.send_paced(&stream, tokio::time::Instant::now(), 0).await;
+    relay.enable_delay(None).unwrap();
+    assert!(relay.sessions()[0].engine().is_active());
+    drop(enc); // OBS crashed
+
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+    let sessions = relay.sessions();
+    assert_eq!(sessions.len(), 1, "the old session was replaced");
+    assert!(sessions[0].engine().is_active(), "delay still on after the reconnect");
+    let start = tokio::time::Instant::now();
+    enc.send_paced(&stream[..stream.len() / 2], start, 0).await; // 1 s of new stream
+    let new_conn =
+        twitch.seen().iter().filter_map(|s| if let Seen::Publish { conn, .. } = s { Some(*conn) } else { None }).max();
+    let early = new_conn.map_or(0, |c| twitch.media(c).iter().filter(|m| frame_no(m).is_some()).count());
+    assert!(early <= 2, "viewers got {early} frames of the new connection before the delay");
+    enc.send_paced(&stream[stream.len() / 2..], start, 0).await;
+    let c = new_conn.expect("new upstream publish");
+    twitch.wait_for("delayed frames", |_| twitch.media(c).iter().any(|m| frame_no(m).is_some())).await;
+}

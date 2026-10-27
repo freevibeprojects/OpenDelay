@@ -53,6 +53,12 @@ Each entry: the decision, then why.
 - **Encoder stops while content is still buffered** (delay active): the relay
   keeps sending the buffered tail at its normal pace, then unpublishes. A new
   encoder connection on the same route replaces the old session.
+- **An encoder reconnecting keeps the delay.** When a route's session ends
+  with the delay on (OBS crash, network blip, restart), an encoder publishing
+  on that route within 10 minutes starts already delayed by the same amount:
+  nothing is sent until its media is that old, so viewers see a pause, never
+  undelayed content. Going live before the session ends clears this.
+  Routes sending its stream start as far behind as their source.
 - **Emergency stop is latched.** Disconnecting alone is not enough, because
   OBS reconnects automatically within seconds. After an emergency stop new
   publishes are refused (`NetConnection.Connect.Rejected`) until the user

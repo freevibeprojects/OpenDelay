@@ -6,6 +6,7 @@ use crate::engine::{self, Enabled, Engine, Refusal};
 use crate::routes::{Route, normalize_path};
 use crate::session::{self, Phase, Session};
 use crate::upstream;
+use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -135,7 +136,12 @@ pub(crate) struct Shared {
     pub tls: Arc<ClientConfig>,
     pub started: Instant,
     pub log_dir: Option<PathBuf>,
+    /// Per route path: the delay its last session ended with, and when.
+    kept_delays: Mutex<HashMap<String, (Duration, Instant)>>,
 }
+
+/// How long a reconnecting encoder still gets the delay its route ended with.
+const KEEP_DELAY_FOR: Duration = Duration::from_secs(600);
 
 impl Shared {
     fn lock_sessions(&self) -> std::sync::MutexGuard<'_, Vec<Arc<Session>>> {
@@ -266,6 +272,24 @@ impl Shared {
         }
         Ok(())
     }
+
+    /// When a route's encoder session ends: the delay it had on (zero: live),
+    /// so an encoder reconnecting soon after (OBS crash, network blip) does
+    /// not go out live while the user believes the delay is on.
+    pub fn remember_delay(&self, route: &Route, delay: Duration) {
+        let mut kept = self.kept_delays.lock().unwrap_or_else(|e| e.into_inner());
+        kept.retain(|_, (_, at)| at.elapsed() < KEEP_DELAY_FOR);
+        if delay.is_zero() {
+            kept.remove(&normalize_path(&route.path));
+        } else {
+            kept.insert(normalize_path(&route.path), (delay, Instant::now()));
+        }
+    }
+
+    pub fn kept_delay(&self, route: &Route) -> Option<Duration> {
+        let kept = self.kept_delays.lock().unwrap_or_else(|e| e.into_inner());
+        kept.get(&normalize_path(&route.path)).filter(|(_, at)| at.elapsed() < KEEP_DELAY_FOR).map(|(d, _)| *d)
+    }
 }
 
 #[derive(Clone)]
@@ -290,6 +314,7 @@ impl Relay {
                 tls: opts.tls.unwrap_or_else(upstream::default_tls),
                 started: Instant::now(),
                 log_dir: opts.log_dir,
+                kept_delays: Mutex::default(),
             }),
         }
     }

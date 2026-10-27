@@ -204,7 +204,13 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
         return;
     }
 
+    let kept_delay = relay.kept_delay(&route);
     let sess = new_session(&relay, id, route, peer);
+    if let Some(d) = kept_delay {
+        sess.engine().start_delayed(d);
+        sess.log
+            .event(format!("Delay kept from the previous connection: viewers see this stream {} s later", d.as_secs()));
+    }
     if let Err(reason) = relay.add_session(sess.clone()) {
         let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
         sess.log.event(format!("Refused: {reason}"));
@@ -219,6 +225,8 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     }
     sess.token.cancel();
     sess.log.finish();
+    let delay = sess.engine().target_delay();
+    relay.remember_delay(&sess.route, delay);
     relay.remove_session(id);
 }
 
@@ -269,6 +277,9 @@ fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) ->
     for route in relay.mirrors_of(&sess.route.id) {
         let m = new_session(relay, relay.next_id(), route, sess.peer);
         m.log.set_secret(&m.route.key);
+        // No platform less delayed than the others: start as far behind as the source.
+        let source_delay = sess.engine().target_delay();
+        m.engine().start_delayed(source_delay);
         m.claim();
         if let Err(reason) = relay.add_session(m.clone()) {
             m.log.event(format!("Refused: {reason}"));

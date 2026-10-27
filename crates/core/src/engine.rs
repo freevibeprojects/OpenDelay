@@ -434,6 +434,21 @@ impl Engine {
         self.mode != Mode::Live
     }
 
+    /// Start a fresh engine already `delay` behind: nothing is sent until the
+    /// first media is that old. For an encoder reconnecting while the delay
+    /// was on, so viewers never see the new connection live.
+    pub fn start_delayed(&mut self, delay: Duration) {
+        if self.mode == Mode::Live && self.entries.is_empty() && !delay.is_zero() {
+            self.retain = self.retain.max(delay);
+            self.mode = Mode::Delayed { delay, target: delay };
+        }
+    }
+
+    /// The delay kept or being established (zero when live).
+    pub fn target_delay(&self) -> Duration {
+        self.target()
+    }
+
     /// Whether the rolling buffer may shrink to `retain`.
     pub fn check_retain(&self, retain: Duration) -> Result<(), Refusal> {
         if self.target() > retain {
@@ -800,6 +815,25 @@ pub(crate) mod tests {
         assert!(matches!(e.poll(t0), Poll::Idle));
         e.finish_input();
         assert!(matches!(e.poll(t0), Poll::Finished));
+    }
+
+    #[test]
+    fn started_delayed_holds_everything_until_it_is_that_old() {
+        let t0 = Instant::now();
+        let mut e = Engine::default();
+        e.start_delayed(Duration::from_secs(5));
+        assert_eq!(e.status(t0, Duration::ZERO).state, DelayState::Delayed);
+        for i in 0..30u32 {
+            e.push(video(i * 100, i % 10 == 0), t0 + Duration::from_millis(u64::from(i) * 100));
+        }
+        assert!(drain(&mut e, t0 + Duration::from_millis(4999)).is_empty(), "nothing goes out early");
+        let out = drain(&mut e, t0 + Duration::from_secs(6));
+        assert_eq!(out.first().map(|m| m.timestamp), Some(0), "then the stream from its start");
+        assert_eq!(out.len(), 11);
+        let mut busy = Engine::default();
+        busy.push(video(0, true), t0);
+        busy.start_delayed(Duration::from_secs(5));
+        assert!(!busy.is_active(), "only a fresh engine starts delayed");
     }
 
     #[test]
