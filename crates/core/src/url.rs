@@ -20,6 +20,7 @@ pub enum UrlError {
     NoHost,
     BadHost,
     BadPort,
+    BadPath,
 }
 
 impl fmt::Display for UrlError {
@@ -29,6 +30,7 @@ impl fmt::Display for UrlError {
             UrlError::NoHost => "The server URL has no host name.",
             UrlError::BadHost => "The server URL has an invalid host name.",
             UrlError::BadPort => "The server URL has an invalid port.",
+            UrlError::BadPath => "The server URL contains spaces or control characters.",
         })
     }
 }
@@ -41,6 +43,7 @@ impl UrlError {
             UrlError::NoHost => "url_no_host",
             UrlError::BadHost => "url_bad_host",
             UrlError::BadPort => "url_bad_port",
+            UrlError::BadPath => "url_bad_path",
         }
     }
 }
@@ -72,6 +75,9 @@ impl UpstreamUrl {
         };
         if host.is_empty() {
             return Err(UrlError::NoHost);
+        }
+        if path.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(UrlError::BadPath);
         }
         if !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':')) {
             return Err(UrlError::BadHost);
@@ -117,6 +123,8 @@ mod tests {
         assert_eq!(UpstreamUrl::parse("rtmps://h").unwrap().port, 443);
         assert_eq!(UpstreamUrl::parse("rtmp://[::1]:1936/a/b?x=1").unwrap().app, "a/b?x=1");
         assert_eq!(UpstreamUrl::parse("rtmp://[::1]:1936/a").unwrap().host, "::1");
+        assert_eq!(UpstreamUrl::parse("rtmp://h/a b").unwrap_err(), UrlError::BadPath);
+        assert_eq!(UpstreamUrl::parse("rtmp://h/app\n/x").unwrap_err(), UrlError::BadPath);
     }
 
     #[test]
