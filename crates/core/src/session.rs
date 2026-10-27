@@ -6,7 +6,7 @@
 use crate::conn::{self, BoxIo, MsgReader, MsgWriter, OUT_CHUNK_SIZE};
 use crate::diag::SessionLog;
 use crate::engine::{Engine, Parsed, Poll};
-use crate::health::{self, HealthAnalyzer, HealthReport};
+use crate::health::{HealthAnalyzer, HealthReport};
 use crate::relay::Shared;
 use crate::routes::{Route, normalize_path};
 use crate::upstream::{self, Upstream, UpstreamError, control_reply, status_of};
@@ -262,7 +262,7 @@ fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<S
         log,
         meter: Mutex::new((Instant::now(), 0, 0)),
         health: Mutex::new(Health {
-            analyzer: HealthAnalyzer::new(health::platform_limit(&preset), Instant::now()),
+            analyzer: HealthAnalyzer::new(&preset, Instant::now()),
             last_check: Instant::now(),
             logged: Vec::new(),
         }),
@@ -742,7 +742,7 @@ pub(crate) fn test_session(id: u64, path: &str, ip: [u8; 4]) -> Arc<Session> {
         log: SessionLog::create(None, id, &[]),
         meter: Mutex::new((Instant::now(), 0, 0)),
         health: Mutex::new(Health {
-            analyzer: HealthAnalyzer::new(None, Instant::now()),
+            analyzer: HealthAnalyzer::new("", Instant::now()),
             last_check: Instant::now(),
             logged: Vec::new(),
         }),

@@ -183,7 +183,8 @@ All durations are milliseconds.
   reaches towards the requested delay.
 - `health.findings` lists problems with the encoder settings, each with a
   `code` (`codec`, `keyframe_interval`, `keyframes_missing`, `b_frames`,
-  `timestamps`, `slow_start`, `resolution`), a `severity` (`low`, `medium`,
+  `timestamps`, `slow_start`, `resolution`, `no_video`, `no_audio`,
+  `bitrate_low`, `bitrate_high`), a `severity` (`low`, `medium`,
   `high`), a `confidence` (0–1), the observed `value`, the `limit` it was
   compared with and an English `message`.
 - With several routes live, `streams` lists each one and the top-level fields
