@@ -28,6 +28,9 @@ use std::time::Duration;
 pub const TOKEN_HEADER: &str = "x-opendelay-token";
 pub const WS_PROTOCOL_VERSION: u32 = 1;
 const MAX_BODY: usize = 64 * 1024;
+/// WebSocket messages up to this size are read and refused with an error
+/// reply; larger ones close the connection.
+const WS_MAX_READ: usize = 1024 * 1024;
 const ACTIONS: &[&str] = &[
     "enableDelay",
     "goLive",
@@ -338,7 +341,11 @@ async fn diagnostic(State(app): AppState, Path(id): Path<String>) -> Response {
 async fn ws(State(app): AppState, upgrade: WebSocketUpgrade) -> Response {
     // Clients that insist on a subprotocol get ours; browsers fail the
     // connection when a requested one is not echoed.
-    upgrade.protocols(["opendelay"]).max_message_size(MAX_BODY).on_upgrade(move |socket| ws_session(app, socket))
+    upgrade
+        .protocols(["opendelay"])
+        .max_message_size(WS_MAX_READ)
+        .max_frame_size(WS_MAX_READ)
+        .on_upgrade(move |socket| ws_session(app, socket))
 }
 
 fn error_reply(app: &App, id: Value, code: &'static str, message: String) -> Value {
@@ -403,6 +410,10 @@ async fn ws_session(app: Arc<App>, mut socket: WebSocket) {
     loop {
         let out = tokio::select! {
             msg = socket.recv() => match msg {
+                Some(Ok(WsMessage::Text(t))) if t.len() > MAX_BODY => {
+                    let message = format!("Messages must be at most {} KiB.", MAX_BODY / 1024);
+                    error_reply(&app, Value::Null, "too_large", message)
+                }
                 Some(Ok(WsMessage::Text(t))) => handle_ws_text(&app, t.as_str(), &mut subscribed),
                 Some(Ok(WsMessage::Binary(_))) => {
                     error_reply(&app, Value::Null, "bad_request", "Send JSON as text messages.".into())

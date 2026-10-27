@@ -23,8 +23,10 @@ ws://127.0.0.1:3937/ws
   stream.
 - No token is needed on the WebSocket; the origin check is what keeps web
   pages out, and any local program can already control local software.
-- Messages are UTF-8 JSON text frames, at most 64 KiB; a larger message
-  closes the connection (close code 1009). Binary frames get an error reply.
+- Messages are UTF-8 JSON text frames, at most 64 KiB. A larger message up to
+  1 MiB gets a `too_large` error reply and the connection stays open; beyond
+  1 MiB the connection closes (close code 1009). Binary frames get an error
+  reply.
 - No subprotocol is needed. Clients that must send one can use `opendelay`.
 
 On connect the server sends:

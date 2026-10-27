@@ -291,6 +291,8 @@ async fn websocket_protocol() {
 
     let v = request(&mut ws, "garbage").await;
     assert_eq!((v["success"].as_bool(), v["code"].as_str()), (Some(false), Some("bad_request")));
+    let v = request(&mut ws, &format!(r#"{{"id":2,"action":"getStatus","pad":"{}"}}"#, "x".repeat(70_000))).await;
+    assert_eq!(v["code"], "too_large", "refused, connection kept");
     let v = request(&mut ws, r#"{"id":"x","action":"teleport"}"#).await;
     assert_eq!((v["id"].as_str(), v["code"].as_str()), (Some("x"), Some("unknown_action")));
     let v = request(&mut ws, r#"{"id":3,"action":"setDelay"}"#).await;
