@@ -23,6 +23,8 @@ pub const RTMP_PORT: u16 = 1937;
 pub const HTTP_PORT: u16 = 3937;
 /// How long a quitting app waits for streams to end (SPEC §3.4).
 pub const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+/// Each route is a listener path and possibly a platform connection; far more is a mistake.
+const MAX_ROUTES: usize = 32;
 
 /// An action from any control surface (SPEC §4.4). JSON form:
 /// `{"action": "enableDelay", "seconds": 30}`.
@@ -584,6 +586,15 @@ impl App {
         let saved = route.clone();
         self.update_settings(|s| {
             let mut candidate = route.clone();
+            match existing {
+                Some(id) if !s.routes.iter().any(|r| r.id == id) => {
+                    return Err(Problem::new("not_found", "No such route."));
+                }
+                None if s.routes.len() >= MAX_ROUTES => {
+                    return Err(Problem::new("too_many_routes", format!("At most {MAX_ROUTES} routes.")));
+                }
+                _ => {}
+            }
             // The key is never shown again: left empty, the stored one stays.
             if candidate.source.is_empty() {
                 candidate.key.clear();

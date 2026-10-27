@@ -219,9 +219,22 @@ async fn routes_list(State(app): AppState) -> Response {
 
 async fn route_create(State(app): AppState, body: Bytes) -> Response {
     match parse::<Route>(&body).and_then(|r| app.add_route(r)) {
-        Ok(r) => respond(&app, Ok("Route added.".into()), json!(without_key(r))),
+        Ok(r) => {
+            let msg = if waits_for_encoder(&app, &r) {
+                "Route added. It starts sending the next time your encoder connects."
+            } else {
+                "Route added."
+            };
+            respond(&app, Ok(msg.into()), json!(without_key(r)))
+        }
         Err(e) => respond(&app, Err(e), Value::Null),
     }
+}
+
+/// An enabled route sending a stream that is already live: routes join a
+/// stream only when its encoder connects.
+fn waits_for_encoder(app: &App, r: &Route) -> bool {
+    r.enabled && !r.source.is_empty() && app.status().streams.iter().any(|s| s.route_id == r.source)
 }
 
 async fn route_update(State(app): AppState, Path(id): Path<String>, body: Bytes) -> Response {
@@ -231,6 +244,8 @@ async fn route_update(State(app): AppState, Path(id): Path<String>, body: Bytes)
             let moved = before.is_some_and(|b| b.path != r.path);
             let msg = if moved {
                 "Route saved. The new path takes effect the next time your encoder connects."
+            } else if waits_for_encoder(&app, &r) {
+                "Route saved. It starts sending the next time your encoder connects."
             } else {
                 "Route saved."
             };

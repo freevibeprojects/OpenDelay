@@ -66,9 +66,13 @@ impl UpstreamUrl {
         }
         let (host, port) = if let Some(v6) = authority.strip_prefix('[') {
             let (h, after) = v6.split_once(']').ok_or(UrlError::BadHost)?;
+            if !after.is_empty() && !after.starts_with(':') {
+                return Err(UrlError::BadHost);
+            }
             (h, after.strip_prefix(':'))
         } else {
             match authority.rsplit_once(':') {
+                Some((h, _)) if h.contains(':') => return Err(UrlError::BadHost), // IPv6 needs brackets
                 Some((h, p)) => (h, Some(p)),
                 None => (authority, None),
             }
@@ -90,7 +94,10 @@ impl UpstreamUrl {
                     1935
                 }
             }
-            Some(p) => p.parse::<u16>().ok().filter(|p| *p != 0).ok_or(UrlError::BadPort)?,
+            Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()) => {
+                p.parse::<u16>().ok().filter(|p| *p != 0).ok_or(UrlError::BadPort)?
+            }
+            Some(_) => return Err(UrlError::BadPort),
         };
         Ok(UpstreamUrl {
             tls,
@@ -124,6 +131,10 @@ mod tests {
         assert_eq!(UpstreamUrl::parse("rtmp://[::1]:1936/a/b?x=1").unwrap().app, "a/b?x=1");
         assert_eq!(UpstreamUrl::parse("rtmp://[::1]:1936/a").unwrap().host, "::1");
         assert_eq!(UpstreamUrl::parse("rtmp://h/a b").unwrap_err(), UrlError::BadPath);
+        assert_eq!(UpstreamUrl::parse("rtmp://h:+80/a").unwrap_err(), UrlError::BadPort);
+        assert_eq!(UpstreamUrl::parse("rtmp://h:/a").unwrap_err(), UrlError::BadPort);
+        assert_eq!(UpstreamUrl::parse("rtmp://[::1]junk/a").unwrap_err(), UrlError::BadHost);
+        assert_eq!(UpstreamUrl::parse("rtmp://a:b:4399/a").unwrap_err(), UrlError::BadHost);
         assert_eq!(UpstreamUrl::parse("rtmp://h/app\n/x").unwrap_err(), UrlError::BadPath);
     }
 

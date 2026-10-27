@@ -502,6 +502,15 @@ async fn a_route_sending_another_routes_stream_can_be_stopped_mid_stream() {
     twitch.wait_for("main still streaming", |_| twitch.media(0).iter().any(|m| frame_no(m) == Some(29))).await;
     assert!(streaming(&main.id));
     app.delete_route(&kick_route.id).unwrap();
+    assert_eq!(
+        app.update_route(&kick_route.id, Route { key: String::new(), ..kick_route.clone() }).unwrap_err().code,
+        "not_found",
+        "gone, not key_missing"
+    );
+    let extra = |i: usize| Route { name: format!("r{i}"), ..route(&format!("r{i}"), "rtmp://127.0.0.1:9/app".into()) };
+    let added = (0..40).take_while(|&i| app.add_route(extra(i)).is_ok()).count();
+    assert_eq!(app.routes().len(), 32, "{added} added");
+    assert_eq!(app.add_route(extra(99)).unwrap_err().code, "too_many_routes");
     enc.unpublish().await;
     app.shutdown().await;
     let _ = std::fs::remove_dir_all(dir);

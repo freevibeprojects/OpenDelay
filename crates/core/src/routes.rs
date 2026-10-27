@@ -155,6 +155,9 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     if route.name.chars().any(|c| c.is_control() || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')) {
         return Err(Problem::new("name_chars", "The route name contains control characters."));
     }
+    if route.upstream.len() > 512 {
+        return Err(Problem::new("url_length", "The server URL must be at most 512 characters."));
+    }
     if route.preset == "twitch" {
         validate_twitch_server(&route.upstream)?;
     } else if route.enabled || !route.upstream.trim().is_empty() {
@@ -170,6 +173,9 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
         }
         if route.key.trim().is_empty() {
             return Err(Problem::new("key_missing", "Paste the stream key from the platform."));
+        }
+        if route.key.len() > 512 || route.key.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(Problem::new("key_chars", "The stream key contains spaces or control characters."));
         }
     }
     Ok(())
@@ -212,8 +218,13 @@ mod tests {
         let mut kick = r("kick", "kick", "rtmps://h:443/app");
         kick.source = "twitch".into();
         assert_eq!(validate(&kick, &routes).unwrap_err().code, "key_missing");
+        kick.key = "k\r\nX: 1".into();
+        assert_eq!(validate(&kick, &routes).unwrap_err().code, "key_chars");
         kick.key = "k".into();
         assert!(validate(&kick, &routes).is_ok());
+        kick.upstream = format!("rtmp://h/{}", "a".repeat(600));
+        assert_eq!(validate(&kick, &routes).unwrap_err().code, "url_length");
+        kick.upstream = "rtmps://h:443/app".into();
         routes.push(kick.clone());
         let mut yt = r("yt", "yt", "rtmp://h/app");
         yt.key = "k".into();
