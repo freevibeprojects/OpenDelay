@@ -111,6 +111,8 @@ async fn state_changes_need_the_token() {
     // Other state-changing methods too.
     assert_eq!(http(&s, "DELETE", "/api/routes/x", &[], "").await.code, 403);
     assert_eq!(http(&s, "PUT", "/api/network", &[], r#"{"listenerMode":"lan"}"#).await.code, 403);
+    let r = post(&s, "/api/action", &" ".repeat(70_000), &[]).await;
+    assert_eq!((r.code, r.json()["code"].as_str()), (413, Some("too_large")));
 }
 
 #[tokio::test]
@@ -308,6 +310,11 @@ async fn websocket_protocol() {
         }
     };
     assert_eq!(push["status"]["version"], env!("CARGO_PKG_VERSION"));
+
+    let mut req = format!("ws://127.0.0.1:{}/ws", s.addr.port()).into_client_request().unwrap();
+    req.headers_mut().insert("Sec-WebSocket-Protocol", "opendelay".parse().unwrap());
+    let (_, res) = tokio_tungstenite::connect_async(req).await.expect("subprotocol accepted");
+    assert_eq!(res.headers()["sec-websocket-protocol"], "opendelay");
 }
 
 #[tokio::test]

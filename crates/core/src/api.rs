@@ -132,6 +132,11 @@ async fn guard(State(app): AppState, req: Request, next: Next) -> Response {
     match check(&app, req.method(), req.headers()) {
         Ok(()) => {
             let mut res = next.run(req).await;
+            if res.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                let message = format!("The request body is larger than {} KiB.", MAX_BODY / 1024);
+                res = (res.status(), Json(json!({ "success": false, "code": "too_large", "message": message })))
+                    .into_response();
+            }
             let h = res.headers_mut();
             h.insert(header::X_CONTENT_TYPE_OPTIONS, header::HeaderValue::from_static("nosniff"));
             h.entry(header::CACHE_CONTROL).or_insert(header::HeaderValue::from_static("no-store"));
@@ -331,7 +336,9 @@ async fn diagnostic(State(app): AppState, Path(id): Path<String>) -> Response {
 // ---- controller WebSocket (docs/controller-protocol.md) ----
 
 async fn ws(State(app): AppState, upgrade: WebSocketUpgrade) -> Response {
-    upgrade.max_message_size(MAX_BODY).on_upgrade(move |socket| ws_session(app, socket))
+    // Clients that insist on a subprotocol get ours; browsers fail the
+    // connection when a requested one is not echoed.
+    upgrade.protocols(["opendelay"]).max_message_size(MAX_BODY).on_upgrade(move |socket| ws_session(app, socket))
 }
 
 fn error_reply(app: &App, id: Value, code: &'static str, message: String) -> Value {
