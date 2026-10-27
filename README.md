@@ -6,7 +6,7 @@ streaming platforms. The encoder publishes to OpenDelay on your own machine;
 OpenDelay relays the stream to the real ingest server and can switch a
 broadcast delay on and off at any time without stopping the stream.
 
-- Local RTMP relay (`rtmp://127.0.0.1:1935/<route>`) to `rtmp://` or `rtmps://`
+- Local RTMP relay (`rtmp://127.0.0.1:1937/<route>`) to `rtmp://` or `rtmps://`
   upstreams, several routes live at once; one encoder output can go to
   several platforms (e.g. Twitch + Kick + YouTube), each with its own key.
 - Instant delay: a rolling buffer lets the delay start by replaying from the
@@ -109,12 +109,12 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
   in `%LOCALAPPDATA%\OpenDelay\logs` / `~/.local/share/opendelay/logs`
   (override with `OPENDELAY_CONFIG_DIR` / `OPENDELAY_DATA_DIR`).
 - **LAN mode** (Settings → Network) lets an encoder on another computer
-  publish to `rtmp://<this computer>:1935/<route>?key=<key>`; the key is on the
+  publish to `rtmp://<this computer>:1937/<route>?key=<key>`; the key is on the
   Setup page, and connections from other computers without it are refused.
   "New key" there replaces it; streams already connected keep running.
   On Windows, allow OpenDelay through Windows Defender Firewall when it asks
   after the restart (for the network type the other computer is on).
-- The RTMP listener uses port 1935 and the local web server port 3000; set
+- The RTMP listener uses port 1937 and the local web server port 3937; set
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` if another program uses them.
 - **Encoder settings**: with a "Custom…" server OBS stops applying the
   platform's recommended settings, and its keyframe interval falls back to

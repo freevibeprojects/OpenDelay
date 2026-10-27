@@ -11,7 +11,7 @@ export struct RouteItem {
     upstream: string,
     enabled: bool,
     streaming: bool,
-    // rtmp://127.0.0.1:1935/<path>
+    // rtmp://127.0.0.1:1937/<path>
     local-url: string,
     host: string,
     // id of the route whose stream this one also sends ("" = own encoder)
@@ -77,7 +77,7 @@ export global AppState {
     in property <string> health-gop;
     in property <bool> health-b-frames;
     in property <int> health-frames;
-    in property <string> encoder-url: "rtmp://127.0.0.1:1935/twitch";
+    in property <string> encoder-url: "rtmp://127.0.0.1:1937/twitch";
     // ---- routes ----
     in property <[RouteItem]> routes;
     // destination presets (name/path/upstream defaults)
@@ -264,8 +264,8 @@ export global Strings {
         if (code == "autostart") { return @tr("Could not change the start-with-system setting: {}", detail); }
         if (code == "save_failed") { return @tr("Could not save the file: {}", detail); }
         if (code == "network") { return @tr("Network error: {}", detail); }
-        if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
-        if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }
+        if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1937: {}", detail); }
+        if (code == "http_port") { return @tr("The local web server could not start on port 3937: {}", detail); }
         detail
     }
 

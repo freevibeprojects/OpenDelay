@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tokio_rustls::rustls::ClientConfig;
 
-pub const RTMP_PORT: u16 = 1935;
-pub const HTTP_PORT: u16 = 3000;
+pub const RTMP_PORT: u16 = 1937;
+pub const HTTP_PORT: u16 = 3937;
 /// How long a quitting app waits for streams to end (SPEC §3.4).
 pub const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
 

@@ -11,14 +11,14 @@ Protocol version: **1**.
 OpenDelay serves a WebSocket on the local machine only:
 
 ```
-ws://127.0.0.1:3000/ws
+ws://127.0.0.1:3937/ws
 ```
 
-- The `Host` header must be `127.0.0.1:3000`, `localhost:3000` or
-  `[::1]:3000` (standard WebSocket clients send this automatically).
+- The `Host` header must be `127.0.0.1:3937`, `localhost:3937` or
+  `[::1]:3937` (standard WebSocket clients send this automatically).
 - Native clients should send **no `Origin` header**. Browser-based clients are
   only accepted when their page is served by OpenDelay itself
-  (`Origin: http://127.0.0.1:3000`). Any other origin, including `null`, is
+  (`Origin: http://127.0.0.1:3937`). Any other origin, including `null`, is
   rejected with HTTP 403. This stops arbitrary websites from controlling the
   stream.
 - No token is needed on the WebSocket; the origin check is what keeps web
@@ -164,7 +164,7 @@ All durations are milliseconds.
     "mode": "local",
     "configuredMode": "local",
     "restartRequired": false,
-    "port": 1935,
+    "port": 1937,
     "lanAddresses": ["192.168.1.20"]
   }
 }

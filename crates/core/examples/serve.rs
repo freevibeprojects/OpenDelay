@@ -9,7 +9,7 @@ use opendelay_core::{App, AppOptions};
 #[tokio::main]
 async fn main() {
     let mut args = std::env::args().skip(1).map(|a| a.parse::<u16>().expect("port number"));
-    let (http, rtmp) = (args.next().unwrap_or(3000), args.next().unwrap_or(1935));
+    let (http, rtmp) = (args.next().unwrap_or(3937), args.next().unwrap_or(1937));
     let dir = std::env::temp_dir().join("opendelay-serve");
     let app =
         App::new(AppOptions { config_dir: Some(dir.join("config")), data_dir: Some(dir.join("data")), tls: None });

@@ -38,7 +38,7 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
 ## 3. RTMP relay
 
 ### 3.1 Listener
-- Accept RTMP publish connections on TCP port 1935.
+- Accept RTMP publish connections on TCP port 1937.
 - Two listener modes, user-selectable:
   - **Local only** (default): bind to the loopback address.
   - **LAN**: bind to all interfaces, so an encoder on another PC on the
@@ -234,7 +234,7 @@ a user-chosen number of seconds, default 60).
 Tray icon with menu: show window, enable/disable delay, go live, quit.
 
 ### 8.3 Local HTTP API
-- HTTP server on a localhost port (default 3000), serving the dock, overlay,
+- HTTP server on a localhost port (default 3937), serving the dock, overlay,
   pages and a JSON API covering: status, every action in §4.4,
   routes CRUD, network settings, Twitch server, diagnostics list/download,
   update check.
@@ -289,7 +289,7 @@ asked before downloading; no silent updates.
 
 ## 13. Acceptance criteria
 
-1. OBS can publish to `rtmp://127.0.0.1:1935/<route>` and the stream appears
+1. OBS can publish to `rtmp://127.0.0.1:1937/<route>` and the stream appears
    on the platform with no delay in passthrough.
 2. With a 60 s buffer filled, enabling a 30 s delay makes viewers see content
    from ~30 s earlier within one keyframe interval, with no stream interruption

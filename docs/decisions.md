@@ -231,7 +231,8 @@ Each entry: the decision, then why.
 - **Web pages** (dock, overlay, setup) take their strings from
   `crates/core/web/lang/<code>.json`, embedded at build time by the core
   build script; a new language is a new JSON file.
-- **Ports**: 1935 (RTMP) and 3000 (HTTP) by default as specified;
+- **Ports**: 1937 (RTMP) and 3937 (HTTP) by default, not the usual 1935 /
+  3000, so OpenDelay can run next to other local RTMP relays;
   `OPENDELAY_RTMP_PORT` / `OPENDELAY_HTTP_PORT` move them when another program
   already listens there (the app otherwise shows an error toast).
 
@@ -283,7 +284,7 @@ Each entry: the decision, then why.
   parsers and the delay engine are fuzzed with libFuzzer (`fuzz/`, see the
   README); the engine target checks that upstream timestamps never decrease.
 - **LAN mode access key**: other computers must add `?key=<key>` to the server
-  URL (`rtmp://<lan-ip>:1935/<route>?key=…`); OBS and librtmp-based encoders
+  URL (`rtmp://<lan-ip>:1937/<route>?key=…`); OBS and librtmp-based encoders
   pass that query in `app` and `tcUrl`, where it is checked (constant time)
   before the route lookup, the platform connection and the session log. The
   key is 16 random hex digits created once per installation, kept in the
