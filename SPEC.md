@@ -175,7 +175,10 @@ the number of observed frames.
 - Rules:
   - Local paths must be unique across routes.
   - A route that is currently streaming cannot be edited, disabled or
-    deleted; tell the user to stop the stream first.
+    deleted; tell the user to stop the stream first. Exception: a route
+    sending another route's stream can be disabled or deleted mid-stream,
+    which stops only its platform connection.
+  - Route names are 1–64 characters without control characters.
   - The default Twitch route may be edited or disabled but not deleted.
   - Path changes take effect on the encoder's next connection; say so.
 - Multistream: several routes may be live at the same time (one encoder
