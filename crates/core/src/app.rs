@@ -519,6 +519,13 @@ impl App {
 
     fn stream_status(&self, s: &Session, now: Instant, cfg: &DelayConfig) -> StreamStatus {
         let info = s.info();
+        let engine = s.engine().status(now, cfg.delay);
+        let mut health = s.health();
+        if info.phase == Phase::Live
+            && let Some(f) = crate::health::upload_finding(engine.behind_ms, engine.skipping)
+        {
+            health.findings.insert(0, f);
+        }
         StreamStatus {
             id: s.id,
             route_id: s.route.id.clone(),
@@ -531,8 +538,8 @@ impl App {
             bytes_out: s.bytes_out.load(Ordering::Relaxed),
             recovery_attempt: info.recovery_attempt,
             last_error: info.last_error,
-            delay: delay_status(&s.engine().status(now, cfg.delay), cfg),
-            health: s.health(),
+            delay: delay_status(&engine, cfg),
+            health,
         }
     }
 

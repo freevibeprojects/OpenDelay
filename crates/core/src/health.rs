@@ -37,7 +37,7 @@ pub enum Severity {
 pub struct Finding {
     /// Stable id: `codec`, `keyframe_interval`, `keyframes_missing`,
     /// `b_frames`, `timestamps`, `slow_start`, `resolution`, `no_video`,
-    /// `no_audio`, `bitrate_low`, `bitrate_high`.
+    /// `no_audio`, `bitrate_low`, `bitrate_high`, `upload_slow`.
     pub code: &'static str,
     pub severity: Severity,
     /// 0..1: how sure the check is.
@@ -96,6 +96,19 @@ pub fn platform_limit(preset: &str) -> Option<(u32, u32)> {
         "kick" => Some((1920, 1080)),
         _ => None,
     }
+}
+
+/// Sending runs behind the stream (`behind_ms`) or had to skip content to
+/// keep up: the upload is too slow for the bitrate.
+pub fn upload_finding(behind_ms: u64, skipping: bool) -> Option<Finding> {
+    (behind_ms > 2000 || skipping).then(|| Finding {
+        code: "upload_slow",
+        severity: Severity::High,
+        confidence: 0.9,
+        value: format!("{:.1} s", behind_ms as f64 / 1000.0),
+        limit: String::new(),
+        message: "The upload is slower than the stream: OpenDelay skips ahead to keep viewers at the delay. Lower the bitrate in your encoder.".into(),
+    })
 }
 
 /// Highest bitrate a destination preset takes reliably.

@@ -65,7 +65,12 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
   reconnect automatically with bounded retries and back-off.
 - After reconnecting, resume from a keyframe so the platform receives a
   decodable stream. Report recovery state (attempt count, last error) in
-  status.
+  status. Close the failed connection before reconnecting: platforms may
+  allow only one connection per stream key.
+- When sending falls more than 5 s behind schedule (upload slower than the
+  stream), skip ahead to a keyframe so viewers stay at the delay instead of
+  drifting further behind; warn the user while it happens. The tail sent
+  after the encoder stopped is never skipped.
 
 ### 3.4 Shutdown
 - When the application is quitting, refuse new encoder connections, then
@@ -161,6 +166,9 @@ medium / high) and a confidence. Required checks:
 - irregular or non-monotonic timestamps
 - slow startup handoff
 - resolution above the destination platform's limit (e.g. Kick)
+- no video or no audio track
+- bitrate very low, or above what the destination platform takes
+- upload slower than the stream
 
 Expose detected codec, resolution, keyframe interval, B-frame detection and
 the number of observed frames.

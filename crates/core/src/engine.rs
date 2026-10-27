@@ -46,6 +46,11 @@ pub const MAX_BUFFER_BYTES: u64 = 1 << 30;
 /// Memory cap for all streams' buffers together (several routes, LAN peers).
 pub const MAX_TOTAL_BUFFER_BYTES: u64 = 2 << 30;
 pub const MAX_DELAY: Duration = Duration::from_secs(600);
+/// Output further behind its schedule than this (the upload cannot keep up)
+/// skips ahead to a keyframe instead of letting the delay grow.
+pub const MAX_BEHIND: Duration = Duration::from_secs(5);
+/// A skip counts as recent (reported in the status) for this long.
+const SKIP_RECENT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub enum Poll {
@@ -172,6 +177,10 @@ pub struct EngineStatus {
     pub degraded: Option<String>,
     /// With `degraded`: the buffer length that fits in memory.
     pub buffer_limit_ms: Option<u64>,
+    /// How far output is behind its schedule because sending is slower than the input.
+    pub behind_ms: u64,
+    /// Content was skipped in the last 30 s to keep up with the input.
+    pub skipping: bool,
 }
 
 /// Result of a successful enable.
@@ -295,6 +304,9 @@ pub struct Engine {
     total: Arc<AtomicU64>,
     /// Rolling buffer length: sent content kept for future instant switches.
     retain: Duration,
+    /// Last skip to keep up with the input, and content skipped not yet taken by [`Engine::take_skipped`].
+    last_skip: Option<Instant>,
+    skipped: Duration,
 }
 
 impl Default for Engine {
@@ -338,6 +350,8 @@ impl Engine {
             bytes: 0,
             total,
             retain,
+            last_skip: None,
+            skipped: Duration::ZERO,
         }
     }
 
@@ -606,7 +620,7 @@ impl Engine {
                     }
                 }
             }
-            if self.retarget(now) {
+            if self.retarget(now) || self.keep_up(now) {
                 continue;
             }
             let Some(e) = self.entry(self.cursor) else { return self.idle() };
@@ -619,6 +633,36 @@ impl Engine {
             self.cursor += 1;
             return Poll::Send(m);
         }
+    }
+
+    /// How far the next message is behind its send time.
+    fn behind(&self, now: Instant) -> Duration {
+        let due = self.delay().unwrap_or_default();
+        if self.resync { Duration::ZERO } else { self.age(self.cursor, now).saturating_sub(due) }
+    }
+
+    /// Upload slower than the input: skip to the newest keyframe that is due,
+    /// so the delay stays what viewers were promised and the backlog cannot
+    /// grow until the connection stalls. Not while finishing (the tail is
+    /// all that is left) or during a switch. Returns whether it skipped.
+    fn keep_up(&mut self, now: Instant) -> bool {
+        if self.input_done || !matches!(self.mode, Mode::Live | Mode::Delayed { .. }) || self.behind(now) <= MAX_BEHIND
+        {
+            return false;
+        }
+        let due = self.delay().unwrap_or_default();
+        let Some(k) = self.keys.iter().rev().copied().find(|&k| k > self.cursor && self.age(k, now) >= due) else {
+            return false;
+        };
+        self.skipped += self.age(self.cursor, now) - self.age(k, now);
+        self.last_skip = Some(now);
+        self.start_at(k);
+        true
+    }
+
+    /// Content skipped by [`Engine::poll`] to keep up since the last call.
+    pub fn take_skipped(&mut self) -> Duration {
+        std::mem::take(&mut self.skipped)
     }
 
     fn idle(&self) -> Poll {
@@ -738,7 +782,8 @@ impl Engine {
 
     /// Status for display; `requested` is the delay an enable would use.
     pub fn status(&self, now: Instant, requested: Duration) -> EngineStatus {
-        let lag = self.delay().unwrap_or_default();
+        let behind = self.behind(now);
+        let lag = self.delay().unwrap_or_default() + behind;
         let max_delay = self.keys.front().map_or(Duration::ZERO, |&k| self.age(k, now));
         let (state, progress) = match self.mode {
             Mode::Live => (DelayState::Live, None),
@@ -771,6 +816,8 @@ impl Engine {
             progress,
             degraded,
             buffer_limit_ms: limit.map(ms),
+            behind_ms: ms(behind),
+            skipping: self.last_skip.is_some_and(|t| now.saturating_duration_since(t) < SKIP_RECENT),
         }
     }
 }
@@ -834,6 +881,34 @@ pub(crate) mod tests {
         busy.push(video(0, true), t0);
         busy.start_delayed(Duration::from_secs(5));
         assert!(!busy.is_active(), "only a fresh engine starts delayed");
+    }
+
+    #[test]
+    fn slow_upload_skips_ahead_instead_of_growing_the_delay() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let mut e = Engine::new(Duration::from_secs(60));
+        e.start_delayed(Duration::from_secs(10));
+        // 1 s keyframe interval, 30 s of input; 0.0–0.5 s go out, then the upload stalls until 18 s
+        for i in 0..300u32 {
+            e.push(video(i * 100, i % 10 == 0), at(u64::from(i) * 100));
+        }
+        assert_eq!(drain(&mut e, at(10_500)).len(), 6);
+        let s = e.status(at(18_000), Duration::ZERO);
+        assert_eq!((s.behind_ms, s.current_delay_ms, s.skipping), (7400, 17_400, false), "lag shown honestly");
+        let Poll::ResetHeaders = e.poll(at(18_000)) else { panic!("skipped to a keyframe") };
+        let first = drain(&mut e, at(18_000)).into_iter().next().unwrap();
+        assert_eq!(first.timestamp, 600, "the timeline continues one frame on");
+        assert_eq!(e.take_skipped(), Duration::from_millis(7400), "from 0.6 s to the keyframe at 8 s");
+        let s = e.status(at(18_000), Duration::ZERO);
+        assert!(s.behind_ms < 1000 && s.skipping && s.state == DelayState::Delayed, "{s:?}");
+
+        let mut done = Engine::default();
+        for i in 0..100u32 {
+            done.push(video(i * 100, i % 10 == 0), at(u64::from(i) * 100));
+        }
+        done.finish_input();
+        assert_eq!(drain(&mut done, at(20_000)).len(), 100, "the tail after the encoder stopped is all sent");
     }
 
     #[test]

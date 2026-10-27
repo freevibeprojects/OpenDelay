@@ -56,6 +56,7 @@
  "health_timestamps": "Irregular timestamps",
  "health_slow_start": "Slow start",
  "health_resolution": "Resolution above the platform limit",
+ "health_upload_slow": "Upload too slow: lower the bitrate",
  "health_no_video": "No video",
  "health_no_audio": "No audio",
  "health_bitrate_low": "Bitrate very low",

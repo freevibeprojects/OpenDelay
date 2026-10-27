@@ -581,6 +581,9 @@ async fn upstream_loop(
             return;
         }
         sess.log.event(format!("Upstream connection lost: {err}"));
+        // Close it first: a stalled socket stays open otherwise, and platforms
+        // that allow one connection per stream key refuse the new one.
+        drop(up);
         let Some(new) = recover(&sess, &tls, &url, &connect_obj, &key, err).await else {
             if !sess.token.is_cancelled() {
                 sess.log.event(if sess.route.source.is_empty() {
@@ -678,7 +681,16 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
             while let Ok(c) = ctl_rx.try_recv() {
                 writer.queue(&c);
             }
-            let poll = sess.engine().poll(Instant::now());
+            let (poll, skipped) = {
+                let mut e = sess.engine();
+                (e.poll(Instant::now()), e.take_skipped())
+            };
+            if !skipped.is_zero() {
+                sess.log.event(format!(
+                    "Upload slower than the stream: skipped {:.1} s to keep viewers at the delay",
+                    skipped.as_secs_f64()
+                ));
+            }
             let wait = match poll {
                 Poll::Send(mut m) => {
                     m.stream_id = stream_id;

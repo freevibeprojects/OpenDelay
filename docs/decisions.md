@@ -50,6 +50,12 @@ Each entry: the decision, then why.
 - **After a reconnect** output resumes at the latest buffered keyframe, after
   re-sending metadata and sequence headers; upstream timestamps continue from
   where the old connection stopped (one frame later).
+- **A slow upload skips ahead, it does not drift.** Output more than 5 s behind
+  its schedule jumps to the newest keyframe that is due, like an encoder
+  dropping frames under congestion. Without this the real delay grew silently
+  past the one shown (90 s against 30 s in testing) until the connection
+  stalled. `currentMs` includes the lag, and an `upload_slow` finding shows
+  while it is behind or skipped in the last 30 s.
 - **Encoder stops while content is still buffered** (delay active): the relay
   keeps sending the buffered tail at its normal pace, then unpublishes. A new
   encoder connection on the same route replaces the old session.
