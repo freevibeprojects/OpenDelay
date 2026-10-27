@@ -148,6 +148,13 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     if route.name.trim().is_empty() {
         return Err(Problem::new("name_missing", "The route needs a name."));
     }
+    if route.name.chars().count() > 64 {
+        return Err(Problem::new("name_length", "The route name must be at most 64 characters."));
+    }
+    // Control characters and bidi overrides would garble or disguise the name in logs and lists.
+    if route.name.chars().any(|c| c.is_control() || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')) {
+        return Err(Problem::new("name_chars", "The route name contains control characters."));
+    }
     if route.preset == "twitch" {
         validate_twitch_server(&route.upstream)?;
     } else if route.enabled || !route.upstream.trim().is_empty() {
@@ -185,6 +192,15 @@ mod tests {
         assert!(validate(&r("a", "", "rtmp://h/app"), &routes).is_err());
         assert!(validate(&r("a", "yt", "http://h/app"), &routes).is_err());
         assert!(validate(&r("a", "yt", "rtmps://h:443/app"), &routes).is_ok());
+        let mut named = r("a", "yt", "rtmp://h/app");
+        named.name = "é".repeat(64);
+        assert!(validate(&named, &routes).is_ok());
+        named.name.push('x');
+        assert_eq!(validate(&named, &routes).unwrap_err().code, "name_length");
+        for bad in ["a\0b", "a\u{1b}[31m", "evil\u{202E}txt"] {
+            named.name = bad.into();
+            assert_eq!(validate(&named, &routes).unwrap_err().code, "name_chars", "{bad:?}");
+        }
         let mut off = r("a", "tt", "");
         off.enabled = false;
         assert!(validate(&off, &routes).is_ok(), "disabled routes may lack a URL");
