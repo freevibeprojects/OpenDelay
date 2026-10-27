@@ -294,6 +294,9 @@ pub struct Engine {
     offset: i64,
     last_out: [Option<i64>; 3],
     clocks: [Unwrap; 3],
+    /// Added to source timestamps: a reconnected encoder's clock continues
+    /// after the previous connection's content.
+    ts_base: i64,
     /// Typical video frame interval (ms), the gap inserted at jumps.
     frame_ms: i64,
     last_video_ts: Option<i64>,
@@ -343,6 +346,7 @@ impl Engine {
             offset: 0,
             last_out: [None; 3],
             clocks: [Unwrap::default(); 3],
+            ts_base: 0,
             frame_ms: 33,
             last_video_ts: None,
             seen_video: false,
@@ -376,7 +380,7 @@ impl Engine {
     /// [`Engine::push`] with the message already inspected.
     pub fn push_parsed(&mut self, msg: Message, parsed: &Parsed, now: Instant) {
         let track = track_of(msg.type_id);
-        let ts = self.clocks[track].next(msg.timestamp);
+        let ts = self.clocks[track].next(msg.timestamp) + self.ts_base;
         let mut key = false;
         let mut config = None;
         match track {
@@ -442,6 +446,29 @@ impl Engine {
         .unwrap_or(self.cursor.max(self.base));
         self.resync = true;
         self.fresh_upstream = true;
+    }
+
+    /// This engine's encoder was replaced by a new connection from the same
+    /// machine, which feeds it from now on: the content not sent yet goes out
+    /// first on the new upstream connection, then the new encoder's stream
+    /// on the same timeline. Returns the length of that unsent content.
+    pub fn continue_with_new_encoder(&mut self) -> Duration {
+        let unsent = match (self.entry(self.cursor), self.entries.back()) {
+            (Some(a), Some(b)) => b.at.duration_since(a.at),
+            _ => Duration::ZERO,
+        };
+        self.input_done = false;
+        self.ts_base = self.entries.iter().map(|e| e.ts).max().map_or(0, |m| m + self.frame_ms);
+        self.clocks = [Unwrap::default(); 3];
+        self.last_video_ts = None;
+        self.upstream_reset();
+        // Restart now, while the configuration cached is still the one the
+        // unsent content was encoded with (the new encoder may change it).
+        if let Some(k) = self.keys.iter().copied().find(|&k| k >= self.cursor) {
+            self.resync = false;
+            self.start_at(k);
+        }
+        unsent
     }
 
     pub fn is_active(&self) -> bool {

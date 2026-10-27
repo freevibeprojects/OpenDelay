@@ -58,7 +58,10 @@ Each entry: the decision, then why.
   while it is behind or skipped in the last 30 s.
 - **Encoder stops while content is still buffered** (delay active): the relay
   keeps sending the buffered tail at its normal pace, then unpublishes. A new
-  encoder connection on the same route replaces the old session.
+  encoder connection from the same machine replaces the old session and, with
+  the delay on, continues its buffer: the tail not sent yet goes out first on
+  the new upstream connection, then the new stream on the same timeline, so
+  viewers lose nothing. The platform still sees one reconnect.
 - **An encoder reconnecting keeps the delay.** When a route's session ends
   with the delay on (OBS crash, network blip, restart), an encoder publishing
   on that route within 10 minutes starts already delayed by the same amount:

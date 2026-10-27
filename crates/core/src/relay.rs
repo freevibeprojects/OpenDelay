@@ -138,6 +138,9 @@ pub(crate) struct Shared {
     pub log_dir: Option<PathBuf>,
     /// Per route path: the delay its last session ended with, and when.
     kept_delays: Mutex<HashMap<String, (Duration, Instant)>>,
+    /// Per route path: the buffer of a delayed session that a reconnecting
+    /// encoder replaced, for the new session to continue.
+    handovers: Mutex<HashMap<String, Engine>>,
 }
 
 /// How long a reconnecting encoder still gets the delay its route ended with.
@@ -264,13 +267,37 @@ impl Shared {
         let old: Vec<Arc<Session>> = on_route.into_iter().filter(|s| s.peer.ip() == peer).collect();
         for s in &old {
             s.log.event("Replaced by a new encoder connection on the same route");
+            s.replaced.store(true, Ordering::SeqCst);
             s.token.cancel();
         }
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline && self.lock_sessions().iter().any(|s| old.iter().any(|o| o.id == s.id)) {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        for s in &old {
+            s.replaced.store(false, Ordering::SeqCst); // too late to be continued
+        }
         Ok(())
+    }
+
+    /// A session ending: when a reconnecting encoder replaced it with the
+    /// delay on, keep its buffer for the new session ([`Shared::take_handover`]).
+    pub(crate) fn end_session(&self, sess: &Session) {
+        let mut engine = sess.engine();
+        if sess.replaced.load(Ordering::SeqCst) && engine.is_active() {
+            let engine = std::mem::take(&mut *engine);
+            self.lock_handovers().insert(normalize_path(&sess.route.path), engine);
+        } else if sess.route.source.is_empty() {
+            self.remember_delay(&sess.route, engine.target_delay());
+        }
+    }
+
+    pub(crate) fn take_handover(&self, route: &Route) -> Option<Engine> {
+        self.lock_handovers().remove(&normalize_path(&route.path))
+    }
+
+    fn lock_handovers(&self) -> std::sync::MutexGuard<'_, HashMap<String, Engine>> {
+        self.handovers.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// When a route's encoder session ends: the delay it had on (zero: live),
@@ -315,6 +342,7 @@ impl Relay {
                 started: Instant::now(),
                 log_dir: opts.log_dir,
                 kept_delays: Mutex::default(),
+                handovers: Mutex::default(),
             }),
         }
     }

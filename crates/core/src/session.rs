@@ -74,6 +74,8 @@ pub struct Session {
     health: Mutex<Health>,
     /// Set (under the relay's session lock) when this session takes its route at `publish`.
     claimed: AtomicBool,
+    /// Set when a new encoder connection from the same machine replaces this session.
+    pub(crate) replaced: AtomicBool,
 }
 
 struct Health {
@@ -206,7 +208,15 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
 
     let kept_delay = relay.kept_delay(&route);
     let sess = new_session(&relay, id, route, peer);
-    if let Some(d) = kept_delay {
+    if let Some(engine) = relay.take_handover(&sess.route) {
+        let mut e = sess.engine();
+        *e = engine;
+        let unsent = e.continue_with_new_encoder();
+        sess.log.event(format!(
+            "Continuing the previous connection's delayed stream: {:.1} s not sent yet go out first",
+            unsent.as_secs_f64()
+        ));
+    } else if let Some(d) = kept_delay {
         sess.engine().start_delayed(d);
         sess.log
             .event(format!("Delay kept from the previous connection: viewers see this stream {} s later", d.as_secs()));
@@ -225,8 +235,7 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
     }
     sess.token.cancel();
     sess.log.finish();
-    let delay = sess.engine().target_delay();
-    relay.remember_delay(&sess.route, delay);
+    relay.end_session(&sess);
     relay.remove_session(id);
 }
 
@@ -267,6 +276,7 @@ fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<S
             logged: Vec::new(),
         }),
         claimed: AtomicBool::new(false),
+        replaced: AtomicBool::new(false),
     })
 }
 
@@ -277,9 +287,15 @@ fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) ->
     for route in relay.mirrors_of(&sess.route.id) {
         let m = new_session(relay, relay.next_id(), route, sess.peer);
         m.log.set_secret(&m.route.key);
-        // No platform less delayed than the others: start as far behind as the source.
-        let source_delay = sess.engine().target_delay();
-        m.engine().start_delayed(source_delay);
+        if let Some(engine) = relay.take_handover(&m.route) {
+            let mut e = m.engine();
+            *e = engine;
+            e.continue_with_new_encoder();
+        } else {
+            // No platform less delayed than the others: start as far behind as the source.
+            let source_delay = sess.engine().target_delay();
+            m.engine().start_delayed(source_delay);
+        }
         m.claim();
         if let Err(reason) = relay.add_session(m.clone()) {
             m.log.event(format!("Refused: {reason}"));
@@ -324,6 +340,7 @@ async fn run_mirror(sess: Arc<Session>, relay: Arc<Shared>, encoder_connect: Amf
     sess.log.event("Session ended");
     sess.token.cancel();
     sess.log.finish();
+    relay.end_session(&sess);
     relay.remove_session(sess.id);
 }
 
@@ -759,5 +776,6 @@ pub(crate) fn test_session(id: u64, path: &str, ip: [u8; 4]) -> Arc<Session> {
             logged: Vec::new(),
         }),
         claimed: AtomicBool::new(false),
+        replaced: AtomicBool::new(false),
     })
 }

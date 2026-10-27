@@ -525,26 +525,53 @@ async fn an_encoder_reconnecting_while_delayed_stays_delayed() {
         RelayOptions { delay, ..Default::default() },
     )
     .await;
-    let stream = synthetic_stream(60, 15); // 2 s, keyframe every 0.5 s
+    let stream = synthetic_stream(90, 15); // 3 s, keyframe every 0.5 s
     let (mut enc, _) = Encoder::connect(addr, "t").await;
     enc.publish("k").await;
-    enc.send_paced(&stream, tokio::time::Instant::now(), 0).await;
+    let start = tokio::time::Instant::now();
+    let two_s = stream.iter().position(|m| m.timestamp >= 2000).unwrap();
+    enc.send_paced(&stream[..two_s], start, 0).await;
     relay.enable_delay(None).unwrap();
     assert!(relay.sessions()[0].engine().is_active());
-    drop(enc); // OBS crashed
+    enc.send_paced(&stream[two_s..], start, 0).await;
+    drop(enc); // OBS crashed with the last second not sent yet
 
+    // The new connection's frames are numbered from 1000.
+    let renumbered: Vec<_> = stream
+        .iter()
+        .cloned()
+        .map(|mut m| {
+            if let Some(n) = frame_no(&m) {
+                let mut p = m.payload.to_vec();
+                p[5..9].copy_from_slice(&(n + 1000).to_be_bytes());
+                m.payload = p.into();
+            }
+            m
+        })
+        .collect();
     let (mut enc, _) = Encoder::connect(addr, "t").await;
     enc.publish("k").await;
     let sessions = relay.sessions();
     assert_eq!(sessions.len(), 1, "the old session was replaced");
     assert!(sessions[0].engine().is_active(), "delay still on after the reconnect");
     let start = tokio::time::Instant::now();
-    enc.send_paced(&stream[..stream.len() / 2], start, 0).await; // 1 s of new stream
+    let one_s = renumbered.iter().position(|m| m.timestamp >= 1000).unwrap();
+    enc.send_paced(&renumbered[..one_s], start, 0).await; // 1 s of new stream
     let new_conn =
         twitch.seen().iter().filter_map(|s| if let Seen::Publish { conn, .. } = s { Some(*conn) } else { None }).max();
-    let early = new_conn.map_or(0, |c| twitch.media(c).iter().filter(|m| frame_no(m).is_some()).count());
+    let new_frames = |c| twitch.media(c).iter().filter_map(frame_no).filter(|n| *n >= 1000).count();
+    let early = new_conn.map_or(0, new_frames);
     assert!(early <= 2, "viewers got {early} frames of the new connection before the delay");
-    enc.send_paced(&stream[stream.len() / 2..], start, 0).await;
+    enc.send_paced(&renumbered[one_s..], start, 0).await;
     let c = new_conn.expect("new upstream publish");
-    twitch.wait_for("delayed frames", |_| twitch.media(c).iter().any(|m| frame_no(m).is_some())).await;
+    twitch.wait_for("delayed frames", |_| new_frames(c) > 0).await;
+
+    // Nothing of the old connection was lost: its unsent tail went out first.
+    let mut old: Vec<u32> = (0..=c).flat_map(|c| twitch.media(c)).filter_map(|m| frame_no(&m)).collect();
+    old.retain(|n| *n < 1000);
+    old.sort();
+    old.dedup();
+    assert_eq!(old, (0..90).collect::<Vec<_>>(), "every frame of the old connection reached the platform");
+    let ts: Vec<u32> = twitch.media(c).iter().filter(|m| frame_no(m).is_some()).map(|m| m.timestamp).collect();
+    assert!(ts.windows(2).all(|w| w[1] >= w[0]), "one timeline across both encoder connections");
 }
