@@ -544,6 +544,19 @@ impl App {
         self.relay.sessions().iter().any(|s| s.route.id == id)
     }
 
+    /// A route sending another route's stream can be switched off mid-stream:
+    /// stop its platform connection, the encoder and the other routes go on.
+    fn stop_mirror(&self, id: &str, why: &str) {
+        for s in self.relay.sessions().iter().filter(|s| s.route.id == id && !s.route.source.is_empty()) {
+            s.log.event(why);
+            s.token.cancel();
+        }
+    }
+
+    fn streaming_source_route(&self, id: &str) -> bool {
+        self.relay.sessions().iter().any(|s| s.route.id == id && s.route.source.is_empty())
+    }
+
     pub fn add_route(&self, mut route: Route) -> Result<Route, Problem> {
         route.path = normalize_path(&route.path);
         route.id = format!("r{}", diag::short_id());
@@ -551,7 +564,8 @@ impl App {
     }
 
     pub fn update_route(&self, id: &str, mut route: Route) -> Result<Route, Problem> {
-        if self.streaming_route(id) {
+        let disabling = !route.enabled;
+        if if disabling { self.streaming_source_route(id) } else { self.streaming_route(id) } {
             return Err(Problem::new(
                 "route_streaming",
                 "This route is streaming. Stop the stream in your encoder before changing it.",
@@ -559,7 +573,11 @@ impl App {
         }
         route.id = id.to_owned();
         route.path = normalize_path(&route.path);
-        self.save_route(Some(id), route)
+        let saved = self.save_route(Some(id), route)?;
+        if disabling {
+            self.stop_mirror(id, "Stopped: route disabled in OpenDelay");
+        }
+        Ok(saved)
     }
 
     fn save_route(&self, existing: Option<&str>, route: Route) -> Result<Route, Problem> {
@@ -607,7 +625,7 @@ impl App {
                 "The default Twitch route can be edited or disabled, but not deleted.",
             ));
         }
-        if self.streaming_route(id) {
+        if self.streaming_source_route(id) {
             return Err(Problem::new(
                 "route_streaming",
                 "This route is streaming. Stop the stream in your encoder before deleting it.",
@@ -624,6 +642,7 @@ impl App {
             s.routes.retain(|r| r.id != id);
             if s.routes.len() == before { Err(Problem::new("not_found", "No such route.")) } else { Ok(()) }
         })?;
+        self.stop_mirror(id, "Stopped: route deleted in OpenDelay");
         Ok(())
     }
 

@@ -281,7 +281,8 @@ component RouteCard inherits Card {
                 Toggle {
                     label: @tr("Enabled");
                     checked: root.route.enabled;
-                    enabled: !root.route.streaming;
+                    // A route sending another route's stream can be switched off mid-stream.
+                    enabled: !root.route.streaming || root.route.source != "";
                     toggled(on) => {
                         let err = AppState.set-route-enabled(root.route.id, on);
                         if (err != "") {
@@ -344,8 +345,12 @@ component RouteCard inherits Card {
                 }
             }
         }
-        if root.route.streaming: Body {
+        if root.route.streaming && root.route.source == "": Body {
             text: @tr("This route is streaming. Stop the stream in your encoder to edit, disable or delete it.");
+            font-size: 12px;
+        }
+        if root.route.streaming && root.route.source != "": Body {
+            text: @tr("This route is streaming. Turn it off to stop sending to this platform; the other routes keep streaming.");
             font-size: 12px;
         }
     }

@@ -463,3 +463,46 @@ async fn oversized_message_before_publish_is_refused_cheaply() {
     // The test process itself holds the 16 MB message (plus its chunked copy).
     assert!(grown_mib < 64, "memory grew by {grown_mib} MiB");
 }
+
+#[tokio::test]
+async fn a_route_sending_another_routes_stream_can_be_stopped_mid_stream() {
+    use opendelay_core::{App, AppOptions};
+    let (twitch, kick) = (MockIngest::start(Behaviour::default()).await, MockIngest::start(Behaviour::default()).await);
+    let dir = std::env::temp_dir().join(format!("opendelay-mirror-{}", opendelay_core::diag::short_id()));
+    let app =
+        App::new(AppOptions { config_dir: Some(dir.join("config")), data_dir: Some(dir.join("data")), tls: None });
+    let main = app.add_route(Route { name: "Main".into(), ..route("main", format!("rtmp://{}/app", twitch.addr)) });
+    let main = main.unwrap();
+    let kick_route = Route {
+        name: "Kick".into(),
+        source: main.id.clone(),
+        key: "kick-key".into(),
+        ..route("kick", format!("rtmp://{}/app", kick.addr))
+    };
+    let kick_route = app.add_route(kick_route).unwrap();
+    let addr = app.start_rtmp(0).await.unwrap()[0];
+    let streaming = |id: &str| app.status().streams.iter().any(|s| s.route_id == id);
+
+    let (mut enc, _) = Encoder::connect(addr, "main").await;
+    enc.publish("twitch-key").await;
+    kick.wait_for("kick publish", |s| s.iter().any(|x| matches!(x, Seen::Publish { .. }))).await;
+    assert!(streaming(&kick_route.id));
+
+    let off = Route { enabled: false, ..main.clone() };
+    assert_eq!(app.update_route(&main.id, off).unwrap_err().code, "route_streaming", "the encoder's own route stays");
+    assert_eq!(app.delete_route(&main.id).unwrap_err().code, "route_streaming");
+
+    app.update_route(&kick_route.id, Route { enabled: false, ..kick_route.clone() }).unwrap();
+    let deadline = Instant::now() + WAIT;
+    while streaming(&kick_route.id) {
+        assert!(Instant::now() < deadline, "mirror did not stop");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    enc.send(&synthetic_stream(30, 15)).await;
+    twitch.wait_for("main still streaming", |_| twitch.media(0).iter().any(|m| frame_no(m) == Some(29))).await;
+    assert!(streaming(&main.id));
+    app.delete_route(&kick_route.id).unwrap();
+    enc.unpublish().await;
+    app.shutdown().await;
+    let _ = std::fs::remove_dir_all(dir);
+}
