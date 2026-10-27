@@ -52,7 +52,6 @@ pub struct Settings {
     pub start_with_os: bool,
     /// `false`: closing the window keeps OpenDelay running in the tray.
     pub quit_on_close: bool,
-    pub onboarding_complete: bool,
     pub delay_mode_enabled: bool,
     pub default_buffer_secs: u32,
     pub delay_secs: u32,
@@ -67,8 +66,6 @@ pub struct Settings {
     /// Overlay badge colour (palette name).
     pub overlay_color: String,
     pub reduce_motion: bool,
-    /// OpenDelay was added to OBS's service list; kept up to date with the routes.
-    pub obs_service: bool,
     /// Fields this version does not know (e.g. from a newer version), kept on save.
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
@@ -82,7 +79,6 @@ impl Default for Settings {
             start_with_os: false,
             // Without a tray (detected at startup) closing always quits.
             quit_on_close: false,
-            onboarding_complete: false,
             delay_mode_enabled: true,
             default_buffer_secs: 60,
             delay_secs: 30,
@@ -94,7 +90,6 @@ impl Default for Settings {
             hotkeys: Hotkeys::default(),
             overlay_color: "violet".into(),
             reduce_motion: false,
-            obs_service: false,
             extra: serde_json::Map::new(),
         }
     }

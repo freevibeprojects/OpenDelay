@@ -152,14 +152,6 @@ export component Card inherits Rectangle {
     drop-shadow-blur: 32px;
     drop-shadow-offset-y: 10px;
     drop-shadow-color: #0000004d;
-    // faint top highlight
-    Rectangle {
-        x: Theme.radius-lg;
-        y: 0;
-        width: parent.width - 2 * Theme.radius-lg;
-        height: 1px;
-        background: @linear-gradient(90deg, #ffffff00 0%, #ffffff14 50%, #ffffff00 100%);
-    }
 }
 
 export component SectionTitle inherits Text {
@@ -308,6 +300,7 @@ export component TextField {
     in property <bool> invalid: false;
     in property <bool> enabled: true;
     in property <bool> password: false;
+    out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback accepted(string);
     min-height: 38px;

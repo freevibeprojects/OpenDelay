@@ -162,9 +162,6 @@ Each entry: the decision, then why.
   anyway). Other numbers use Inter's default figures.
 - **Modal backdrop**: Slint has no backdrop blur; modals dim the window
   (70 % black) instead.
-- **Encoder "screenshots"** in the setup assistant are drawn schematics of
-  the stream-settings form (service, server, key) rather than screenshots of
-  third-party software, which keeps them original and translatable.
 - **Translations**: the UI ships in English only (French was removed at the
   project owner's request, although SPEC §7.4 mentions it). Every desktop
   string still goes through Slint `@tr()`: adding
@@ -202,17 +199,11 @@ Each entry: the decision, then why.
   source streams (the source route's own failure still disconnects the
   encoder). Keys live in the settings file like OBS keeps them in its
   profile, are redacted from session logs and are never returned by the API.
-- **OBS service entry** (`crates/core/src/obs.rs`): a custom server makes OBS
-  skip the platform's recommended settings (x264's "auto" keyframe interval
-  is 250 frames, 8.3 s at 30 fps), so OpenDelay adds its own entry to
-  `obs-studio/plugin_config/rtmp-services/services.json` with
-  `"recommended": {"keyint": 2}`, the same mechanism Twitch's entry uses.
-  Checked with OBS 33: the entry gives `keyint: 60` at 30 fps, survives OBS
-  exiting, and OBS reads the list each time its settings open. OBS replaces
-  the file when it downloads a newer service list, so the entry is rewritten
-  at startup and on route changes once the user added it (`obsService` in
-  the settings). Nothing else in the file changes (serde_json
-  `preserve_order`); the previous file is kept as `services.json.opendelay.bak`.
+- **No OBS service entry**: an earlier version added an "OpenDelay" entry to
+  OBS's `services.json` so OBS applied a 2 s keyframe interval by itself.
+  It was removed for the simpler setup other relay apps use: a "Custom…"
+  server and the keyframe interval set once in OBS (Setup page). Entries
+  added by that version stay in OBS's list until OBS downloads a new one.
 - **Twitch servers** come from Twitch's public ingest list
   (`https://ingest.twitch.tv/ingests`), fetched at startup when a Twitch route
   exists and on demand. Accepted hosts: `live.twitch.tv`, `*.twitch.tv`,

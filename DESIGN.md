@@ -38,7 +38,7 @@ smooth short animations. Information is glanceable mid-stream.
 | accent-glow | accent @ 28% | glows/shadows around active elements |
 | success | `#12b886` | "live", healthy |
 | warning | `#f2a20c` | health warnings, buffering |
-| error | `#ec4646` | errors, emergency stop |
+| error | `#ec4646` | errors |
 
 Delay-active hero number: vertical gradient from pale lavender (`#ece6ff`)
 through mid violet (`#a690fb`) to deep indigo (`#4a3394`), with a soft violet
@@ -64,8 +64,8 @@ at ~30% with a faint top inner highlight on panels.
     ~0.6 s.
   - Primary action button (enable/disable delay) under the hero; secondary
     "go live" button beside it.
-  - Delay duration input with − / + steppers (press-and-hold accelerates)
-    and buffer preset selector.
+  - Delay input: type the seconds, − / + change it by 5 s, presets
+    (5 s … 5 min); buffer preset selector.
   - Buffer fill progress bar (accent fill, warning colour while not ready).
   - Row of small stat cards: bitrate, uptime, buffer, current delay.
   - Health warnings card (warning colour accents), hidden when healthy.

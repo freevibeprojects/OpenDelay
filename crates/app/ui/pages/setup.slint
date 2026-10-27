@@ -1,300 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Setup: first-run assistant (platform → encoder → overlay → done) and a
-// quick reference page that can reopen it.
+// Setup: how to point an encoder at OpenDelay.
 
-import { Theme, Icons } from "../theme.slint";
-import { Button, ButtonKind, Card, CopyField, TextField, Segmented, Body, SectionTitle } from "../widgets.slint";
-import { AppState, Strings, RouteItem } from "../state.slint";
-import { OverlayBadge } from "overlay.slint";
+import { Theme } from "../theme.slint";
+import { Button, Card, CopyField, Body, SectionTitle } from "../widgets.slint";
+import { AppState } from "../state.slint";
+import { RouteEditor } from "multistream.slint";
 
-// Schematic of an encoder's stream settings (drawn, not a screenshot).
-component EncoderIllustration {
-    in property <int> encoder; // 0 OBS, 1 Streamlabs, 2 other
-    in property <string> url;
-    in property <string> platform;
-    property <string> kind-label: root.encoder == 0 ? @tr("Service") : root.encoder == 1 ? @tr("Stream Type") : @tr("Destination");
-    property <string> kind-value: root.encoder == 0 ? "OpenDelay" : root.encoder == 1 ? @tr("Custom Ingest") : @tr("Custom RTMP server");
-    property <string> server-label: root.encoder == 1 ? @tr("URL") : @tr("Server");
-    height: 190px;
-    accessible-role: image;
-    accessible-label: @tr("Encoder stream settings: {} {}, {} {}, Stream key: your {} key", root.kind-label, root.kind-value, root.server-label, root.url, root.platform);
-    Rectangle {
-        border-radius: Theme.radius-md;
-        background: #1c1c22;
-        border-width: 1px;
-        border-color: Theme.border-hover;
-        clip: true;
-        // title bar
-        Rectangle {
-            y: 0;
-            height: 28px;
-            background: #26262e;
-            HorizontalLayout {
-                padding-left: 12px;
-                spacing: 6px;
-                alignment: start;
-                for c in [#ef4444, #f2a20c, #12b886]: VerticalLayout {
-                    alignment: center;
-                    Rectangle { width: 9px; height: 9px; border-radius: 4.5px; background: c.with-alpha(0.7); }
-                }
-                Text {
-                    text: @tr("Settings → Stream");
-                    color: Theme.text-secondary;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-            }
-        }
-        VerticalLayout {
-            y: 28px;
-            height: parent.height - 28px;
-            padding: 16px;
-            spacing: 10px;
-            for row[i] in [
-                { label: root.kind-label, value: root.kind-value, hot: false },
-                { label: root.server-label, value: root.url, hot: true },
-                { label: @tr("Stream Key"), value: @tr("•••••••• (your {} key)", root.platform), hot: false },
-            ]: HorizontalLayout {
-                spacing: 12px;
-                Text {
-                    width: 96px;
-                    text: row.label;
-                    color: Theme.text-secondary;
-                    font-size: 12px;
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
-                }
-                Rectangle {
-                    height: 30px;
-                    border-radius: Theme.radius-sm;
-                    background: Theme.bg-base;
-                    border-width: row.hot ? 2px : 1px;
-                    border-color: row.hot ? Theme.accent-hover : Theme.border-default;
-                    Text {
-                        x: 10px;
-                        width: parent.width - 20px;
-                        text: row.value;
-                        color: row.hot ? Theme.text-primary : Theme.text-secondary;
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                }
-            }
-        }
-    }
-}
-
-component Steps {
-    in property <int> current;
-    in property <[string]> names;
+component Step {
+    in property <int> n;
+    in property <string> text;
     HorizontalLayout {
-        spacing: 8px;
-        alignment: center;
-        for n[i] in root.names: HorizontalLayout {
-            spacing: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: start;
             Rectangle {
                 width: 24px;
                 height: 24px;
                 border-radius: 12px;
-                background: i <= root.current ? Theme.accent : Theme.bg-surface-hover;
+                background: Theme.accent-muted;
                 Text {
-                    text: i + 1;
-                    color: i <= root.current ? Theme.on-fill : Theme.text-secondary;
+                    text: root.n;
+                    color: Theme.accent-hover;
                     font-size: 12px;
                     font-weight: 700;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
             }
-            Text {
-                text: n;
-                color: i == root.current ? Theme.text-primary : Theme.text-muted;
-                font-size: 13px;
-                font-weight: i == root.current ? 600 : 500;
-                vertical-alignment: center;
-            }
-            if i < root.names.length - 1: VerticalLayout {
-                alignment: center;
-                Rectangle { width: 28px; height: 1px; background: Theme.border-hover; }
-            }
         }
-    }
-}
-
-export component Onboarding inherits Rectangle {
-    callback done();
-    property <int> step: 0;
-    property <RouteItem> preset: AppState.presets[0];
-    property <string> server;
-    property <int> encoder: 0;
-    property <string> error;
-    property <bool> needs-server: root.preset.preset == "tiktok" || root.preset.preset == "custom";
-    background: Theme.bg-base.with-alpha(0.97);
-    TouchArea { }
-    FocusScope { }
-
-    function local-url() -> string {
-        "rtmp://127.0.0.1:1935/" + root.preset.path
-    }
-
-    VerticalLayout {
-        alignment: center;
-        HorizontalLayout {
-            alignment: center;
-            Card {
-                width: min(720px, root.width - 64px);
-                VerticalLayout {
-                    padding: 32px;
-                    spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 12px;
-                        Image { source: Icons.logo; width: 36px; height: 36px; }
-                        Text {
-                            text: @tr("Welcome to OpenDelay");
-                            color: Theme.text-primary;
-                            font-size: 22px;
-                            font-weight: 700;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                        }
-                        Button {
-                            text: @tr("Skip");
-                            kind: ButtonKind.ghost;
-                            clicked => {
-                                AppState.finish-onboarding("", "");
-                                AppState.onboarding-open = false;
-                                root.done();
-                            }
-                        }
-                    }
-                    Steps {
-                        current: root.step;
-                        names: [@tr("Platform"), @tr("Encoder"), @tr("Overlay"), @tr("Done")];
-                    }
-
-                    if root.step == 0: VerticalLayout {
-                        spacing: 14px;
-                        SectionTitle { text: @tr("Where do you stream?"); }
-                        Body { text: @tr("OpenDelay sits between your encoder and the platform. Pick the platform to set up first; you can add more later on the Multistream page."); }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
-                            for p in AppState.presets: Button {
-                                text: Strings.preset-name(p.preset);
-                                kind: root.preset.preset == p.preset ? ButtonKind.primary : ButtonKind.secondary;
-                                clicked => {
-                                    root.preset = p;
-                                    root.error = "";
-                                }
-                            }
-                        }
-                        if root.needs-server: VerticalLayout {
-                            spacing: 6px;
-                            Text { text: @tr("Server URL from your platform"); color: Theme.text-secondary; font-size: 12px; }
-                            TextField {
-                                label: @tr("Server URL from your platform");
-                                placeholder: "rtmp://… or rtmps://…";
-                                mono: true;
-                                text <=> root.server;
-                            }
-                        }
-                    }
-
-                    if root.step == 1: VerticalLayout {
-                        spacing: 14px;
-                        SectionTitle { text: @tr("Point your encoder at OpenDelay"); }
-                        Segmented {
-                            label: @tr("Encoder");
-                            options: ["OBS Studio", "Streamlabs", @tr("Other encoder")];
-                            selected <=> root.encoder;
-                        }
-                        Body {
-                            text: root.encoder == 0 ? @tr("Click \"Add to OBS\", then in OBS open Settings → Stream, choose the service \"OpenDelay\" and keep your usual {} stream key. OBS then sets the keyframe interval and rate control by itself.", Strings.preset-name(root.preset.preset))
-                                : root.encoder == 1 ? @tr("In Streamlabs open Settings → Stream, choose \"Custom Ingest\", paste the URL below and your {} stream key.", Strings.preset-name(root.preset.preset))
-                                : @tr("Choose a custom RTMP server in your encoder, paste the URL below and use your {} stream key.", Strings.preset-name(root.preset.preset));
-                        }
-                        if root.encoder == 0: HorizontalLayout {
-                            alignment: start;
-                            Button {
-                                text: @tr("Add to OBS");
-                                kind: ButtonKind.primary;
-                                clicked => { AppState.add-to-obs(); }
-                            }
-                        }
-                        if root.encoder != 0: Body {
-                            text: @tr("With a custom server your encoder no longer applies {}'s recommended settings. Set the keyframe interval to 2 s and the rate control to CBR, otherwise viewers may only see a black screen.", Strings.preset-name(root.preset.preset));
-                        }
-                        if root.encoder != 0: CopyField {
-                            value: root.local-url();
-                            label: @tr("Server URL");
-                            copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
-                        }
-                        EncoderIllustration {
-                            encoder: root.encoder;
-                            url: root.encoder == 0 ? Strings.preset-name(root.preset.preset) : root.local-url();
-                            platform: Strings.preset-name(root.preset.preset);
-                        }
-                    }
-
-                    if root.step == 2: VerticalLayout {
-                        spacing: 14px;
-                        SectionTitle { text: @tr("Show the delay on stream (optional)"); }
-                        Body { text: @tr("Add a Browser source in your encoder with the overlay URL. Viewers then see when the delay is on. You can change its colour on the Overlay page."); }
-                        CopyField {
-                            value: AppState.overlay-url;
-                            label: @tr("Overlay URL");
-                            copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
-                        }
-                        Rectangle {
-                            height: 90px;
-                            border-radius: Theme.radius-md;
-                            background: @linear-gradient(135deg, #1f2937 0%, #312e81 100%);
-                            OverlayBadge { x: 18px; y: 19px; }
-                        }
-                    }
-
-                    if root.step == 3: VerticalLayout {
-                        spacing: 10px;
-                        SectionTitle { text: @tr("You are ready"); }
-                        Body { text: @tr("Start streaming in your encoder. The Dashboard shows the connection, and \"Enable delay\" switches the delay on without stopping the stream."); }
-                        Body { text: @tr("Tip: set global hotkeys on the Controllers page so you can switch the delay from inside a game."); }
-                    }
-
-                    if root.error != "": Text { text: root.error; color: Theme.error; font-size: 13px; wrap: word-wrap; }
-
-                    HorizontalLayout {
-                        spacing: 10px;
-                        if root.step > 0: Button {
-                            text: @tr("Back");
-                            kind: ButtonKind.ghost;
-                            show-icon: true;
-                            icon: Icons.chevron-left;
-                            clicked => { root.step -= 1; }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                        Button {
-                            text: root.step == 3 ? @tr("Finish") : @tr("Next");
-                            kind: ButtonKind.primary;
-                            min-width: 120px;
-                            clicked => {
-                                if (root.step == 0 && root.needs-server && root.server == "") {
-                                    root.error = @tr("Paste the server URL your platform gives you.");
-                                } else if (root.step < 3) {
-                                    root.error = "";
-                                    root.step += 1;
-                                } else {
-                                    root.error = AppState.finish-onboarding(root.preset.preset, root.server);
-                                    if (root.error == "") {
-                                        AppState.onboarding-open = false;
-                                        root.done();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        Body {
+            text: root.text;
+            color: Theme.text-primary;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
         }
     }
 }
@@ -305,51 +43,37 @@ export component SetupPage {
         Card {
             VerticalLayout {
                 padding: 20px;
-                spacing: 10px;
-                SectionTitle { text: @tr("Setup assistant"); }
-                Body { text: @tr("The assistant walks you through choosing a platform, pointing your encoder at OpenDelay and adding the overlay."); }
-                HorizontalLayout {
-                    alignment: start;
-                    Button {
-                        text: @tr("Open the setup assistant");
-                        kind: ButtonKind.primary;
-                        clicked => { AppState.onboarding-open = true; }
+                spacing: 14px;
+                SectionTitle { text: @tr("Connect your encoder"); }
+                Step { n: 1; text: @tr("In OBS open Settings → Stream, choose the service \"Custom…\" and paste the server URL of your platform:"); }
+                // Routes that send another route's stream get no encoder.
+                VerticalLayout {
+                    spacing: 8px;
+                    padding-left: 36px;
+                    for r in AppState.routes: VerticalLayout {
+                        if r.source == "": HorizontalLayout {
+                            spacing: 12px;
+                            Text {
+                                width: 120px;
+                                text: r.name;
+                                color: r.enabled ? Theme.text-primary : Theme.text-disabled;
+                                font-size: 13px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            CopyField {
+                                value: r.local-url;
+                                label: r.name;
+                                copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
+                            }
+                        }
                     }
                 }
-            }
-        }
-        Card {
-            VerticalLayout {
-                padding: 20px;
-                spacing: 10px;
-                SectionTitle { text: @tr("Encoder settings"); }
-                Body { text: @tr("OBS: click \"Add to OBS\", then in OBS open Settings → Stream and choose the service \"OpenDelay\" and the route. OBS then sets the keyframe interval and rate control by itself. Keep the stream key from your platform: OpenDelay forwards it unchanged."); }
-                HorizontalLayout {
-                    alignment: start;
-                    Button {
-                        text: @tr("Add to OBS");
-                        kind: ButtonKind.primary;
-                        clicked => { AppState.add-to-obs(); }
-                    }
-                }
-                Body { text: @tr("Other encoders: use a custom RTMP server with one of these URLs, a keyframe interval of 2 s and CBR rate control, otherwise viewers may only see a black screen."); }
-                for r in AppState.routes: HorizontalLayout {
-                    spacing: 12px;
-                    Text {
-                        width: 120px;
-                        text: r.name;
-                        color: r.enabled ? Theme.text-primary : Theme.text-disabled;
-                        font-size: 13px;
-                        font-weight: 600;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    CopyField {
-                        value: r.local-url;
-                        label: r.name;
-                        copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
-                    }
-                }
+                Step { n: 2; text: @tr("Keep your usual stream key from the platform: OpenDelay passes it on unchanged."); }
+                Step { n: 3; text: @tr("In Settings → Output (Output Mode: Advanced) set the Keyframe Interval to 2 s and the rate control to CBR. With a custom server OBS no longer applies the platform's recommended settings: without this, Twitch viewers may see a black screen and the delay switches late."); }
+                Step { n: 4; text: @tr("Start streaming in OBS. Change the delay on the Dashboard at any time."); }
+                Body { text: @tr("Streamlabs: Settings → Stream → \"Custom Ingest\". Other encoders: a custom RTMP server with the same URL and settings."); }
                 if AppState.listener-mode == "lan" && AppState.lan-addresses != "": Body {
                     text: @tr("From another computer on your network, replace 127.0.0.1 with {} and add ?key={} to the end of the server URL. OpenDelay refuses other computers without this key.", AppState.lan-addresses, AppState.lan-key);
                 }
@@ -363,6 +87,21 @@ export component SetupPage {
                     Button {
                         text: @tr("New key");
                         clicked => { AppState.new-lan-key(); }
+                    }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                SectionTitle { text: @tr("Other platforms"); }
+                Body { text: @tr("Not streaming to Twitch? Edit the Twitch route on the Multistream page. To stream to several platforms at once, add each one with its stream key: it sends the same stream, so OBS needs no change."); }
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        text: @tr("Add a platform");
+                        clicked => { RouteEditor.add(); }
                     }
                 }
             }

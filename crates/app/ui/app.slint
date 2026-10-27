@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Main window: sidebar navigation, pages, toasts, onboarding; plus the tray.
+// Main window: sidebar navigation, pages, toasts; plus the tray.
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
@@ -9,7 +9,7 @@ import { DashboardPage } from "pages/dashboard.slint";
 import { MultistreamPage, RouteEditor, RouteEditorModal } from "pages/multistream.slint";
 import { ControllersPage } from "pages/controllers.slint";
 import { OverlayPage } from "pages/overlay.slint";
-import { SetupPage, Onboarding } from "pages/setup.slint";
+import { SetupPage } from "pages/setup.slint";
 import { HelpPage } from "pages/help.slint";
 import { SettingsPage } from "pages/settings.slint";
 
@@ -163,7 +163,11 @@ export component MainWindow inherits Window {
     // Toast: shown for each new AppState.toast(), hidden after 3.5 s.
     property <int> toast-serial: AppState.toast-serial;
     property <int> hidden-serial: 0;
-    changed toast-serial => { toast-timer.restart(); }
+    // restart() alone does not start a stopped Timer.
+    changed toast-serial => {
+        toast-timer.running = true;
+        toast-timer.restart();
+    }
     Toast {
         text: AppState.toast-text;
         kind: AppState.toast-kind;
@@ -219,12 +223,6 @@ export component MainWindow inherits Window {
             }
         }
     }
-
-    if AppState.onboarding-open: Onboarding {
-        width: parent.width;
-        height: parent.height;
-        done => { root.page = 0; }
-    }
 }
 
 // Tray icon with its menu (SPEC §8.2).
@@ -235,7 +233,6 @@ export component Tray inherits SystemTrayIcon {
     callback show-window();
     callback toggle-delay();
     callback go-live();
-    callback emergency-stop();
     callback quit();
     clicked => { root.show-window(); }
     Menu {
@@ -245,7 +242,6 @@ export component Tray inherits SystemTrayIcon {
             activated => { root.toggle-delay(); }
         }
         MenuItem { title: @tr("Go live"); enabled: root.delay-active; activated => { root.go-live(); } }
-        MenuItem { title: @tr("Emergency stop"); activated => { root.emergency-stop(); } }
         MenuSeparator { }
         MenuItem { title: @tr("Quit"); activated => { root.quit(); } }
     }

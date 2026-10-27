@@ -320,36 +320,6 @@ impl Ui {
         }
     }
 
-    fn finish_onboarding(&self, preset: &str, server: &str) -> SharedString {
-        if let Some(p) = PRESETS.iter().find(|p| p.id == preset) {
-            let existing = self.app.routes().into_iter().find(|r| r.preset == preset);
-            let result = match existing {
-                Some(mut r) => {
-                    r.enabled = true;
-                    if !server.trim().is_empty() {
-                        r.upstream = server.trim().to_owned();
-                    }
-                    self.app.update_route(&r.id.clone(), r).map(|_| ())
-                }
-                None => {
-                    let upstream = if p.upstream.is_empty() { server.trim() } else { p.upstream };
-                    let route = Route {
-                        name: p.name.into(),
-                        preset: p.id.into(),
-                        path: p.path.into(),
-                        upstream: upstream.into(),
-                        ..Default::default()
-                    };
-                    self.app.add_route(route).map(|_| ())
-                }
-            };
-            if let Err(e) = result {
-                return self.problem(&e);
-            }
-        }
-        self.save(|s| s.onboarding_complete = true)
-    }
-
     fn set_language(&self, code: &str) {
         let effective = if code.is_empty() { platform::system_language(LANGUAGES) } else { code.to_owned() };
         let _ = slint::select_bundled_translation(&effective);
@@ -543,7 +513,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
             })
             .collect(),
     ));
-    s.set_onboarding_open(!settings.onboarding_complete);
     if !ui.hotkeys.borrow().available() {
         s.set_hotkeys_note(ui.strings().invoke_problem(ss("hotkey_unsupported"), ss("")));
     } else if ui.hotkeys.borrow().uses_portal() {
@@ -591,9 +560,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     s.on_toggle_overlay(with_ui!(|u| {
         let visible = !u.app.status().overlay_visible;
         u.act(Action::SetOverlayVisible { visible }, if visible { "overlay-on" } else { "overlay-off" });
-    }));
-    s.on_emergency_stop(with_ui!(|u| {
-        u.act(Action::EmergencyStop, "emergency");
     }));
     s.on_clear_emergency(with_ui!(|u| {
         u.act(Action::ClearEmergencyStop, "allow");
@@ -654,12 +620,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
             Err(p) => u.state().invoke_toast(u.problem(&p), ss("error")),
         }
     }));
-    s.on_add_to_obs(with_ui!(|u| {
-        match u.app.add_to_obs() {
-            Ok(()) => u.state().invoke_report(ss("obs"), true, ss(""), ss("")),
-            Err(p) => u.state().invoke_toast(u.problem(&p), ss("error")),
-        }
-    }));
     s.on_set_twitch_server(with_ui!(|u, url| {
         if let Err(p) = u.app.set_twitch_server(&url) {
             u.state().invoke_toast(u.problem(&p), ss("error"));
@@ -696,7 +656,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
             Err(e) => u.toast_problem("save_failed", &e.to_string()),
         }
     }));
-    s.on_finish_onboarding(with_ui!(|u, preset, server| u.finish_onboarding(&preset, &server)));
     s.on_refresh_twitch_servers(with_ui!(|u| u.fetch_twitch_servers(true)));
     s.on_load_twitch_servers(with_ui!(|u| if u.twitch.borrow().is_empty() {
         u.fetch_twitch_servers(false)
@@ -736,9 +695,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         }));
         t.on_go_live(with_ui!(|u| {
             u.act(Action::GoLive, "golive");
-        }));
-        t.on_emergency_stop(with_ui!(|u| {
-            u.act(Action::EmergencyStop, "emergency");
         }));
         t.on_quit(with_ui!(|u| u.quit()));
     }

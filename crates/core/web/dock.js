@@ -81,7 +81,6 @@ $("toggle").onclick = () => {
   run(active ? "goLive" : "enableDelay");
 };
 $("golive").onclick = () => run("goLive");
-$("stop").onclick = () => run("emergencyStop");
 $("allow").onclick = () => run("clearEmergencyStop");
 $("overlay").onclick = () => run("toggleOverlay");
 holdable($("minus"), -1);

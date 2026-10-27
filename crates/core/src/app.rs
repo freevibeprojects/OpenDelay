@@ -597,7 +597,6 @@ impl App {
             }
             Ok(())
         })?;
-        self.sync_obs_service();
         Ok(saved)
     }
 
@@ -625,31 +624,7 @@ impl App {
             s.routes.retain(|r| r.id != id);
             if s.routes.len() == before { Err(Problem::new("not_found", "No such route.")) } else { Ok(()) }
         })?;
-        self.sync_obs_service();
         Ok(())
-    }
-
-    // ---- OBS service entry ----
-
-    /// Add OpenDelay to OBS's service list, so OBS applies a 2 s keyframe
-    /// interval by itself.
-    pub fn add_to_obs(&self) -> Result<(), Problem> {
-        crate::obs::register(&self.routes(), self.rtmp_port())
-            .map_err(|e| Problem::new("obs_service", e.to_string()))?;
-        self.update_settings(|s| {
-            s.obs_service = true;
-            Ok(())
-        })
-    }
-
-    /// Bring the OBS entry up to date (routes, port) once it was added: OBS
-    /// also drops it when it downloads a new service list.
-    pub fn sync_obs_service(&self) {
-        if self.settings().obs_service
-            && let Err(e) = crate::obs::register(&self.routes(), self.rtmp_port())
-        {
-            eprintln!("could not update OBS's service list: {e}");
-        }
     }
 
     // ---- network and Twitch server ----

@@ -112,10 +112,6 @@ fn main() {
     w.show().unwrap();
     let s = w.global::<AppState>();
 
-    s.set_onboarding_open(true);
-    shoot(&window, &time, &format!("{out}/onboarding.ppm"));
-    s.set_onboarding_open(false);
-
     let pages = ["dashboard", "multistream", "controllers", "overlay", "setup", "help", "settings"];
     for (i, name) in pages.iter().enumerate() {
         w.set_page(i as i32);

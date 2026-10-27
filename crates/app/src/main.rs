@@ -28,9 +28,6 @@ fn main() {
     let app = App::new(AppOptions::default());
     let rtmp = rt.block_on(app.start_rtmp(port("OPENDELAY_RTMP_PORT", RTMP_PORT)));
     let http = rt.block_on(app.start_http(http_port));
-    if rtmp.is_ok() {
-        app.sync_obs_service();
-    }
 
     let ui = match ui::create(app.clone(), rt.handle().clone()) {
         Ok(ui) => ui,

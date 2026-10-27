@@ -117,7 +117,6 @@ export global AppState {
     in property <string> hotkeys-note;
     in property <[LogItem]> logs;
     in property <string> logs-folder;
-    in-out property <bool> onboarding-open;
     // waiting for streams to end before quitting
     in property <bool> quitting;
     // ---- toast ----
@@ -133,7 +132,6 @@ export global AppState {
     callback set-delay-mode(bool);
     callback toggle-overlay();
     callback set-overlay-color(string);
-    callback emergency-stop();
     callback clear-emergency();
     // returns an error message, or "" on success
     callback save-route(RouteItem) -> string;
@@ -148,7 +146,6 @@ export global AppState {
     callback set-reduce-motion(bool);
     callback set-listener-mode(string);
     callback new-lan-key();
-    callback add-to-obs();
     callback set-twitch-server(string);
     callback refresh-twitch-servers();
     // the Twitch server list is opened: fetch it once (no request at startup)
@@ -163,7 +160,6 @@ export global AppState {
     callback save-log(string);
     callback refresh-logs();
     // preset id, server URL (TikTok/Custom) → error or ""
-    callback finish-onboarding(string, string) -> string;
     // route id → name
     pure callback route-name(string) -> string;
     callback quit();
@@ -178,7 +174,7 @@ export global AppState {
     // Toast for the result of an action (called from Rust).
     public function report(action: string, ok: bool, code: string, detail: string) {
         if (ok) {
-            self.toast(Strings.success(action), action == "emergency" ? "warning" : "success");
+            self.toast(Strings.success(action), "success");
         } else {
             self.toast(Strings.refusal(code, detail), "warning");
         }
@@ -235,12 +231,10 @@ export global Strings {
         if (action == "mode-off") { return @tr("Delay mode off"); }
         if (action == "overlay-on") { return @tr("Overlay shown"); }
         if (action == "overlay-off") { return @tr("Overlay hidden"); }
-        if (action == "emergency") { return @tr("Emergency stop: every stream was disconnected"); }
         if (action == "allow") { return @tr("Streaming allowed again"); }
         if (action == "log-saved") { return @tr("Log saved to your Downloads folder"); }
         if (action == "twitch-list") { return @tr("Twitch server list updated"); }
         if (action == "lan-key") { return @tr("New network access key. Other computers need the new key from now on."); }
-        if (action == "obs") { return @tr("OpenDelay added to OBS. In OBS open Settings → Stream and choose the service \"OpenDelay\"."); }
         if (action == "listener") { return @tr("Saved. Restart OpenDelay for the listener change to take effect."); }
         @tr("Saved")
     }
@@ -269,7 +263,6 @@ export global Strings {
         if (code == "hotkey_wayland") { return @tr("Wayland session: global hotkeys only fire while an X11 window has focus. Bind your desktop's own shortcuts to the controller WebSocket or HTTP API instead."); }
         if (code == "autostart") { return @tr("Could not change the start-with-system setting: {}", detail); }
         if (code == "save_failed") { return @tr("Could not save the file: {}", detail); }
-        if (code == "obs_service") { return @tr("Could not add OpenDelay to OBS: {}", detail); }
         if (code == "network") { return @tr("Network error: {}", detail); }
         if (code == "rtmp_port") { return @tr("OpenDelay could not listen for encoders on port 1935: {}", detail); }
         if (code == "http_port") { return @tr("The local web server could not start on port 3000: {}", detail); }
@@ -289,7 +282,7 @@ export global Strings {
 
     public pure function finding-detail(code: string, value: string, limit: string) -> string {
         if (code == "codec") { return @tr("{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder.", value); }
-        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder, or in OBS choose the service \"OpenDelay\" (Setup page: Add to OBS).", value, limit); }
+        if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder (OBS: Settings → Output, Advanced mode).", value, limit); }
         if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall.", value); }
         if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder for cleaner switches."); }
         if (code == "timestamps") { return @tr("The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."); }

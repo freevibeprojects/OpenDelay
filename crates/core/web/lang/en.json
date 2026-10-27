@@ -18,7 +18,6 @@
  "buffer": "Buffer",
  "bitrate": "Bitrate",
  "uptime": "Uptime",
- "emergency": "Emergency stop",
  "allow": "Allow streaming",
  "emergency_active": "Emergency stop is active",
  "overlay_show": "Show overlay",

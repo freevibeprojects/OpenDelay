@@ -2,89 +2,114 @@
 // Dashboard: hero delay value, main controls, buffer, stats, health.
 
 import { Theme, Icons } from "../theme.slint";
-import { Button, ButtonKind, IconButton, Card, Pill, ProgressBar, RollingNumber, StatCard, Select, Choice, Toggle, CopyField, Body, SectionTitle } from "../widgets.slint";
+import { Button, ButtonKind, IconButton, Card, Pill, ProgressBar, RollingNumber, StatCard, Select, Choice, Toggle, CopyField, TextField, Body, SectionTitle } from "../widgets.slint";
 import { AppState, Strings } from "../state.slint";
 
-component DelayStepper {
-    in-out property <int> value: AppState.configured-delay-s;
+// Delay in seconds: type a value (Enter or leaving the field applies it),
+// nudge it by 5 s or pick a preset.
+component DelayInput {
     property <int> backend: AppState.configured-delay-s;
-    property <bool> pending;
-    property <int> ticks;
-    property <bool> holding: minus.pressed || plus.pressed;
+    // ±5 changes wait for a short pause, so several clicks make one switch.
+    property <int> pending: -1;
+    property <bool> editing: field.has-focus;
     accessible-role: spinbox;
-    accessible-label: @tr("Delay");
-    accessible-value: root.value;
-    accessible-action-increment => { root.step(1); }
-    accessible-action-decrement => { root.step(-1); }
+    accessible-label: @tr("Delay in seconds");
+    accessible-value: root.backend;
+    accessible-action-increment => { root.nudge(5); }
+    accessible-action-decrement => { root.nudge(-5); }
 
+    init => { field.text = root.backend; }
     changed backend => {
-        if (!root.pending) {
-            root.value = root.backend;
+        if (!root.editing && root.pending < 0) {
+            field.text = root.backend;
         }
     }
-    changed holding => {
-        if (!root.holding) {
-            root.ticks = 0;
-            commit.restart();
+    changed editing => {
+        if (!root.editing) {
+            root.apply(field.text);
         }
     }
 
-    function step(dir: int) {
-        root.value = clamp(root.value + dir * (root.ticks > 12 ? 5 : 1), 1, 600);
-        root.pending = true;
+    function apply(t: string) {
+        if (t.is-float() && t.to-float() >= 1 && t.to-float() <= 600) {
+            if (round(t.to-float()) != root.backend) {
+                AppState.set-delay(round(t.to-float()));
+            }
+            field.text = round(t.to-float());
+        } else {
+            AppState.toast(@tr("Enter a delay from 1 to 600 seconds."), "warning");
+            field.text = root.backend;
+        }
+    }
+
+    function nudge(d: int) {
+        root.pending = clamp((root.pending < 0 ? root.backend : root.pending) + d, 1, 600);
+        field.text = root.pending;
+        // restart() alone does not start a stopped Timer.
+        commit.running = true;
         commit.restart();
     }
 
-    repeat := Timer {
-        interval: root.ticks == 0 ? 450ms : root.ticks < 8 ? 140ms : 60ms;
-        running: root.holding;
-        triggered => {
-            root.ticks += 1;
-            root.step(minus.pressed ? -1 : 1);
-        }
-    }
     commit := Timer {
         interval: 700ms;
         running: false;
         triggered => {
             self.running = false;
-            if (root.pending && !root.holding) {
-                root.pending = false;
-                AppState.set-delay(root.value);
+            if (root.pending >= 0) {
+                AppState.set-delay(root.pending);
+                root.pending = -1;
             }
         }
     }
 
-    HorizontalLayout {
+    VerticalLayout {
         spacing: 10px;
-        minus := IconButton {
-            icon: Icons.minus;
-            label: @tr("Shorter delay");
-            size: 38px;
-            round: true;
-            clicked => { root.step(-1); }
-        }
-        Rectangle {
-            min-width: 108px;
-            border-radius: Theme.radius-md;
-            background: Theme.bg-base;
-            border-width: 1px;
-            border-color: root.pending ? Theme.accent-hover : Theme.border-default;
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            IconButton {
+                icon: Icons.minus;
+                label: @tr("5 seconds shorter");
+                size: 38px;
+                round: true;
+                clicked => { root.nudge(-5); }
+            }
+            field := TextField {
+                width: 84px;
+                label: @tr("Delay in seconds");
+                placeholder: @tr("seconds");
+                accepted(t) => { root.apply(t); }
+            }
             Text {
-                text: Strings.duration(root.value);
-                color: Theme.text-primary;
-                font-size: 16px;
-                font-weight: 600;
-                horizontal-alignment: center;
+                text: @tr("s");
+                color: Theme.text-secondary;
+                font-size: 14px;
                 vertical-alignment: center;
             }
+            IconButton {
+                icon: Icons.plus;
+                label: @tr("5 seconds longer");
+                size: 38px;
+                round: true;
+                clicked => { root.nudge(5); }
+            }
         }
-        plus := IconButton {
-            icon: Icons.plus;
-            label: @tr("Longer delay");
-            size: 38px;
-            round: true;
-            clicked => { root.step(1); }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for p in [5, 10, 15, 30, 60, 120, 300]: Button {
+                text: Strings.duration(p);
+                kind: root.backend == p ? ButtonKind.primary : ButtonKind.secondary;
+                font-size: 13px;
+                pad: 10px;
+                clicked => {
+                    root.pending = -1;
+                    field.text = p;
+                    if (p != root.backend) {
+                        AppState.set-delay(p);
+                    }
+                }
+            }
         }
     }
 }
@@ -254,10 +279,11 @@ export component DashboardPage {
                     VerticalLayout {
                         spacing: 8px;
                         Text { text: @tr("Delay"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
-                        DelayStepper { }
+                        DelayInput { }
                     }
                     VerticalLayout {
                         spacing: 8px;
+                        alignment: start;
                         Text { text: @tr("Buffer length"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                         Select {
                             label: @tr("Buffer length");
@@ -280,6 +306,7 @@ export component DashboardPage {
                     }
                     VerticalLayout {
                         spacing: 8px;
+                        alignment: start;
                         Text { text: @tr("Delay mode"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                         VerticalLayout {
                             alignment: center;
@@ -292,16 +319,6 @@ export component DashboardPage {
                         }
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    VerticalLayout {
-                        alignment: end;
-                        Button {
-                            text: @tr("Emergency stop");
-                            kind: ButtonKind.danger;
-                            show-icon: true;
-                            icon: Icons.power;
-                            clicked => { AppState.emergency-stop(); }
-                        }
-                    }
                 }
                 VerticalLayout {
                     spacing: 8px;

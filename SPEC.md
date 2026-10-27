@@ -70,8 +70,8 @@ Primary platform: Windows 10/11 x64. Linux support is desirable.
 ### 3.4 Shutdown
 - When the application is quitting, refuse new encoder connections, then
   wait (bounded, e.g. 10 s) for active streams to stop before exiting.
-- **Emergency stop**: an explicit action that immediately disconnects every
-  active stream, upstream and downstream.
+- **Emergency stop**: an API / controller action (no button in the app or dock)
+  that immediately disconnects every active stream, upstream and downstream.
 
 ## 4. Delay engine
 
@@ -195,8 +195,8 @@ used inside OBS.
 ### 7.1 Main window
 - Dashboard: connection state, uptime, delay state, current and target delay,
   buffer fill progress, bitrate/packet counters, health warnings, big
-  delay on/off control, delay duration input (with press-and-hold
-  increment/decrement), buffer preset selector.
+  delay on/off control, delay input (typed seconds, ±5 s, presets),
+  buffer preset selector.
 - Multi-stream page: route list with add/edit/delete/enable.
 - Overlay page: overlay URL with copy button, live preview.
 - Controllers page: hotkey configuration and controller (Stream Deck) setup.
@@ -205,17 +205,11 @@ used inside OBS.
 - Diagnostics: list of recent stream session logs with download.
 - Help links to the project's own documentation and community.
 
-### 7.2 Onboarding
-First-run wizard: choose the platform, show the server URL and stream key
-instructions for the chosen encoder (OBS, Streamlabs, others) with
-screenshots of the encoder's settings, explain overlay setup, then finish.
-Remember completion; the wizard is re-openable from settings.
-
-For OBS, "Add to OBS" adds an "OpenDelay" service (one server per route that
-receives an encoder stream) to OBS's service list with a recommended 2 s
-keyframe interval, so OBS applies it (and CBR) by itself instead of the user
-changing encoder settings. Once added, the entry follows route changes and is
-restored at startup.
+### 7.2 Encoder setup
+The Setup page lists each route's server URL (routes that receive an encoder
+stream) with the steps for OBS: "Custom…" service, the platform's own stream
+key, keyframe interval 2 s and CBR; plus Streamlabs and other encoders, and a
+shortcut to add a platform.
 
 ### 7.3 OBS dock and overlay
 - **Dock page**: a compact version of the control panel, served over HTTP on
@@ -237,12 +231,11 @@ enable delay, go live, toggle overlay, and "custom delay" (enables delay with
 a user-chosen number of seconds, default 60).
 
 ### 8.2 Tray
-Tray icon with menu: show window, enable/disable delay, go live, emergency
-stop, quit.
+Tray icon with menu: show window, enable/disable delay, go live, quit.
 
 ### 8.3 Local HTTP API
 - HTTP server on a localhost port (default 3000), serving the dock, overlay,
-  onboarding pages and a JSON API covering: status, every action in §4.4,
+  pages and a JSON API covering: status, every action in §4.4,
   routes CRUD, network settings, Twitch server, diagnostics list/download,
   update check.
 - Responses are JSON with a success flag, message, and the fresh status.
@@ -276,7 +269,7 @@ work.)
 ## 10. Settings storage
 
 JSON settings file in the per-user config directory, containing: routes,
-start-with-OS, quit-on-close, onboarding complete, delay mode enabled, default
+start-with-OS, quit-on-close, delay mode enabled, default
 buffer, listener mode, Twitch server, language. Versioned, with migrations
 for older files. Unknown fields must not cause a crash.
 

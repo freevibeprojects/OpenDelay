@@ -119,12 +119,10 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
 - **Encoder settings**: with a "Custom…" server OBS stops applying the
   platform's recommended settings, and its keyframe interval falls back to
   "auto" (about 8 s with x264). Twitch viewers may then see a black screen,
-  and the delay can only switch on keyframes. **Add to OBS** (Setup page)
-  avoids that: it adds an "OpenDelay" service to OBS's service list, and
-  with that service OBS uses a 2 s keyframe interval and CBR by itself.
-  Other encoders: set the keyframe interval to 2 s and CBR yourself.
-  OpenDelay warns about long keyframe intervals a few seconds after a
-  stream starts.
+  and the delay can only switch on keyframes. Set the keyframe interval to
+  2 s and CBR in OBS (Settings → Output, Advanced mode); the Setup page
+  shows the steps. OpenDelay warns about long keyframe intervals a few
+  seconds after a stream starts.
 
 ### Checks
 

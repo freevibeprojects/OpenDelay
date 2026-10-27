@@ -8,7 +8,6 @@ pub mod diag;
 pub mod engine;
 pub mod health;
 pub mod net;
-pub mod obs;
 pub mod relay;
 pub mod routes;
 pub mod session;

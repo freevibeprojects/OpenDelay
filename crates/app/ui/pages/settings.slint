@@ -62,15 +62,6 @@ export component SettingsPage {
                         toggled(on) => { AppState.set-reduce-motion(on); }
                     }
                 }
-                Divider { }
-                SettingRow {
-                    title: @tr("Setup assistant");
-                    description: @tr("Walk through the first-run setup again.");
-                    Button {
-                        text: @tr("Open");
-                        clicked => { AppState.onboarding-open = true; }
-                    }
-                }
             }
         }
         Card {
