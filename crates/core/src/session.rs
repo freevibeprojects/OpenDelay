@@ -238,13 +238,14 @@ fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<S
     }
     let log = SessionLog::create(relay.log_dir.as_deref(), id, &header);
     let preset = route.preset.clone();
+    let engine = Mutex::new(relay.new_engine(&route));
     Arc::new(Session {
         id,
         route,
         peer,
         started: Instant::now(),
         started_at: SystemTime::now(),
-        engine: Mutex::new(relay.new_engine()),
+        engine,
         notify: Notify::new(),
         token: CancellationToken::new(),
         info: Mutex::new(SessionInfo { phase: Phase::Connecting, recovery_attempt: 0, last_error: None }),

@@ -211,10 +211,11 @@ instructions for the chosen encoder (OBS, Streamlabs, others) with
 screenshots of the encoder's settings, explain overlay setup, then finish.
 Remember completion; the wizard is re-openable from settings.
 
-For OBS, "Add to OBS" adds an "OpenDelay" service (one server per route) to
-OBS's service list with a recommended 2 s keyframe interval, so OBS applies
-it (and CBR) by itself instead of the user changing encoder settings. Once
-added, the entry follows route changes and is restored at startup.
+For OBS, "Add to OBS" adds an "OpenDelay" service (one server per route that
+receives an encoder stream) to OBS's service list with a recommended 2 s
+keyframe interval, so OBS applies it (and CBR) by itself instead of the user
+changing encoder settings. Once added, the entry follows route changes and is
+restored at startup.
 
 ### 7.3 OBS dock and overlay
 - **Dock page**: a compact version of the control panel, served over HTTP on

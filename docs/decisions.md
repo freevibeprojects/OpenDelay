@@ -263,7 +263,8 @@ Each entry: the decision, then why.
   - AMF0 decoding stops after 65 536 values per message (each value costs
     ~32–56 bytes of memory per 1–3 input bytes); script data over 64 KiB is
     never parsed as `onMetaData`.
-  - Buffers: 1 GiB per stream and 2 GiB for all streams together.
+  - Buffers: 1 GiB per stream and 2 GiB for all streams together (a route
+    sending another route's stream shares its payloads and is not counted again).
   - Encoders must send data at least every 20 s after publishing; an
     upstream write that makes no progress for 15 s is treated as a lost
     connection and recovered.

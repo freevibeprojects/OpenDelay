@@ -170,7 +170,13 @@ impl Shared {
         self.lan_key.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    pub fn new_engine(&self) -> Engine {
+    pub fn new_engine(&self, route: &Route) -> Engine {
+        if !route.source.is_empty() {
+            // shortcut: a mirror shares its source's payloads, so it stays out of the
+            // total budget; content only it still holds is bounded by MAX_BUFFER_BYTES
+            // alone. Count shared payloads once if that ever matters.
+            return Engine::new(self.config().retain());
+        }
         Engine::with_budget(self.config().retain(), self.buffered.clone())
     }
 
@@ -551,6 +557,17 @@ mod tests {
         let other_route = test_session(3, "u", [192, 168, 1, 3]);
         relay.shared.add_session(other_route.clone()).unwrap();
         assert!(relay.shared.claim_route(&other_route).is_ok());
+    }
+
+    #[test]
+    fn mirrors_share_payloads_outside_the_budget() {
+        let relay = Relay::new(vec![], RelayOptions { tls: Some(upstream::default_tls()), ..Default::default() });
+        let mirror = Route { source: "twitch".into(), ..Default::default() };
+        let (mut own, mut copy) = (relay.shared.new_engine(&Route::default()), relay.shared.new_engine(&mirror));
+        let frame = opendelay_rtmp::Message::new(opendelay_rtmp::msg_type::VIDEO, 1, 0, vec![0x17, 1, 0, 0, 0, 9]);
+        own.push(frame.clone(), Instant::now());
+        copy.push(frame, Instant::now());
+        assert_eq!(relay.shared.buffered.load(Ordering::Relaxed), 6, "counted once");
     }
 
     #[test]

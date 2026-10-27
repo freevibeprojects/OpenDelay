@@ -27,10 +27,11 @@ fn services_path() -> Option<PathBuf> {
     dirs.into_iter().map(|d| d.join("plugin_config/rtmp-services/services.json")).find(|p| p.is_file())
 }
 
-/// The entry: one server per route.
+/// The entry: one server per route an encoder can stream to.
 fn entry(routes: &[Route], port: u16) -> Value {
     let servers: Vec<Value> = routes
         .iter()
+        .filter(|r| r.source.is_empty())
         .map(|r| json!({ "name": r.name, "url": format!("rtmp://127.0.0.1:{port}/{}", r.path) }))
         .collect();
     json!({
@@ -80,7 +81,13 @@ mod tests {
     #[test]
     fn adds_replaces_and_keeps_the_rest() {
         let obs = r#"{"$schema":"schema/service-schema-v5.json","format_version":5,"services":[{"name":"Twitch","common":true,"servers":[{"name":"Auto","url":"rtmp://live.twitch.tv/app"}],"recommended":{"keyint":2,"max video bitrate":6000}}]}"#;
-        let routes = default_routes();
+        let mut routes = default_routes();
+        routes.push(Route {
+            name: "Kick".into(),
+            path: "kick".into(),
+            source: routes[0].id.clone(),
+            ..Default::default()
+        });
         let added = with_entry(obs, entry(&routes, 1935)).unwrap().unwrap();
         assert!(added.starts_with(
             r#"{"$schema":"schema/service-schema-v5.json","format_version":5,"services":[{"name":"Twitch""#
@@ -89,6 +96,7 @@ mod tests {
         let ours = &v["services"][1];
         assert_eq!((&ours["name"], &ours["recommended"]["keyint"]), (&json!("OpenDelay"), &json!(2)));
         assert_eq!(ours["servers"][0]["url"], "rtmp://127.0.0.1:1935/twitch");
+        assert_eq!(ours["servers"].as_array().unwrap().len(), routes.len() - 1, "no server for a mirror route");
         assert_eq!(with_entry(&added, entry(&routes, 1935)).unwrap(), None, "unchanged entry: no write");
         let moved = with_entry(&added, entry(&routes, 1936)).unwrap().unwrap();
         let v: Value = serde_json::from_str(&moved).unwrap();
