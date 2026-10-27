@@ -11,14 +11,13 @@ publish = false
 opendelay-core = { path = "../core" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 sys-locale = "0.3"
-# Only what the app uses: winit (X11 + Wayland / Win32), the OpenGL renderer
-# plus the software renderer as fallback where OpenGL is unusable (VMs, remote
-# desktops), AccessKit, the native tray, and the mandatory compat flag.
+# Only what the app uses: winit (X11 + Wayland / Win32), the software renderer
+# (CPU only: no GPU driver memory, works in VMs and remote desktops),
+# AccessKit, the native tray, and the mandatory compat flag.
 slint = { version = "1.18", default-features = false, features = [
     "std",
     "compat-1-18",
     "backend-winit",
-    "renderer-femtovg",
     "renderer-software",
     "accessibility",
     "system-tray",
@@ -34,7 +33,7 @@ winreg = "0.56"
 windows-sys = { version = "0.61", features = ["Win32_System_Com", "Win32_System_LibraryLoader", "Win32_UI_Shell"] }
 
 [build-dependencies]
-# No compile-time software-renderer resources (the app renders with OpenGL).
+# No compile-time software-renderer resources: the embedded fonts are rasterized at runtime.
 slint-build = { version = "1.18", default-features = false, features = ["compat-1-18"] }
 
 [features]

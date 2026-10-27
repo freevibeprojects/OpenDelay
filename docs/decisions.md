@@ -319,13 +319,12 @@ Each entry: the decision, then why.
 
 - **Slint features**: default features off; enabled are `std`,
   `compat-1-18` (required), `backend-winit` (X11 + Wayland on Linux, Win32),
-  `renderer-femtovg` (OpenGL, the design's renderer), `renderer-software`
-  (fallback only), `accessibility` and `system-tray`. `slint-build` runs
+  `renderer-software`, `accessibility` and `system-tray`. `slint-build` runs
   without its default compile-time software-renderer resources.
-- **OpenGL fallback**: OpenGL failures inside the FemtoVG renderer surface as
-  panics after Slint's own renderer fallback has run, so OpenDelay catches
-  them, writes `software-renderer` next to the settings and relaunches with
-  the software renderer (also when showing the window returns an error).
+- **CPU rendering only**: measured on Windows with an NVIDIA GPU, the window
+  idles at about 1% of one core with 10 MB private memory, against 0.2% and
+  132 MB with the OpenGL (FemtoVG) renderer, most of it driver memory. One
+  renderer also removes the OpenGL failure fallback (VMs, remote desktops).
 - **Tray host detection** on Linux asks the session bus for
   `org.kde.StatusNotifierWatcher`; without it no tray is created and closing
   the window quits. "Keep in tray" is the default everywhere else.
