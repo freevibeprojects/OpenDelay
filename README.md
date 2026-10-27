@@ -193,6 +193,21 @@ feed URL and help links are placeholders and every download is rejected
 | `OPENDELAY_UPDATE_KEY` | Ed25519 public key, 64 hex digits |
 | `OPENDELAY_REPOSITORY` | project URL used by the Help page links |
 
+Release builds also keep local paths (your home folder) out of the binary's
+panic messages; Windows builds link the C runtime statically, so no Visual C++
+Redistributable is needed:
+
+```sh
+# Linux
+RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$PWD=/src" cargo build --release
+```
+
+```powershell
+# Windows (PowerShell, MSVC)
+$env:RUSTFLAGS = "-C target-feature=+crt-static --remap-path-prefix=$HOME\.cargo=/cargo --remap-path-prefix=$PWD=/src"
+cargo build --release --target x86_64-pc-windows-msvc
+```
+
 To create the key (once) and sign a release with OpenSSL 3:
 
 ```sh
