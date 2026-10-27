@@ -220,6 +220,11 @@ impl ChunkReader {
             st.partial = Some(Vec::with_capacity((length as usize).min(64 * 1024)));
         }
         let partial = st.partial.as_mut().expect("partial set above");
+        // Past the first 64 KiB, size the rest exactly instead of doubling: the
+        // payload keeps this capacity, while buffer limits count its length.
+        if partial.capacity() - partial.len() < n {
+            partial.reserve_exact(length as usize - partial.len());
+        }
         partial.extend_from_slice(&b[p..p + n]);
         let complete = partial.len() as u32 == length;
         let msg = if complete {
@@ -496,6 +501,16 @@ mod tests {
         r.set_max_message_size(4000);
         r.feed(&out);
         assert_eq!(r.next_message().unwrap().unwrap().payload.len(), 2000);
+    }
+
+    #[test]
+    fn large_messages_are_sized_exactly() {
+        let mut out = Vec::new();
+        ChunkWriter::new().write(&mut out, 6, &msg(msg_type::VIDEO, 1, 0, 200_000, 1));
+        let mut r = ChunkReader::new();
+        r.feed(&out[..out.len() - 1]);
+        assert_eq!(r.next_message(), Ok(None));
+        assert_eq!(r.streams[&6].partial.as_ref().map(Vec::capacity), Some(200_000));
     }
 
     #[test]
