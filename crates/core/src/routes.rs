@@ -131,6 +131,25 @@ pub fn validate_twitch_server(url: &str) -> Result<UpstreamUrl, Problem> {
     Ok(u)
 }
 
+/// Control, bidi and invisible format characters, which would garble or
+/// disguise a name in logs and lists. The joiners U+200C and U+200D stay:
+/// Persian and other scripts, and emoji sequences, need them.
+fn hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{AD}'
+                | '\u{61C}'
+                | '\u{180E}'
+                | '\u{200B}'
+                | '\u{200E}'..='\u{200F}'
+                | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{206F}'
+                | '\u{FEFF}'
+                | '\u{FFF9}'..='\u{FFFB}'
+        )
+}
+
 /// Check `route` against the rules and the other routes (excluding itself).
 pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     let path = normalize_path(&route.path);
@@ -151,9 +170,8 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     if route.name.chars().count() > 64 {
         return Err(Problem::new("name_length", "The route name must be at most 64 characters."));
     }
-    // Control characters and bidi overrides would garble or disguise the name in logs and lists.
-    if route.name.chars().any(|c| c.is_control() || matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')) {
-        return Err(Problem::new("name_chars", "The route name contains control characters."));
+    if route.name.chars().any(hidden_char) {
+        return Err(Problem::new("name_chars", "The route name contains control or invisible characters."));
     }
     if route.upstream.len() > 512 {
         return Err(Problem::new("url_length", "The server URL must be at most 512 characters."));
@@ -203,10 +221,12 @@ mod tests {
         assert!(validate(&named, &routes).is_ok());
         named.name.push('x');
         assert_eq!(validate(&named, &routes).unwrap_err().code, "name_length");
-        for bad in ["a\0b", "a\u{1b}[31m", "evil\u{202E}txt"] {
+        for bad in ["a\0b", "a\u{1b}[31m", "evil\u{202E}txt", "Twi\u{200B}tch", "a\u{200E}", "\u{FEFF}x"] {
             named.name = bad.into();
             assert_eq!(validate(&named, &routes).unwrap_err().code, "name_chars", "{bad:?}");
         }
+        named.name = "\u{645}\u{200C}\u{627} \u{1F468}\u{200D}\u{1F469}".into(); // Persian ZWNJ, emoji ZWJ
+        assert!(validate(&named, &routes).is_ok());
         let mut off = r("a", "tt", "");
         off.enabled = false;
         assert!(validate(&off, &routes).is_ok(), "disabled routes may lack a URL");

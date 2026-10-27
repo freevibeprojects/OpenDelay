@@ -246,7 +246,7 @@ export global Strings {
         if (code == "path_taken") { return @tr("Another route already uses the local path \"{}\".", detail); }
         if (code == "name_missing") { return @tr("Give the route a name."); }
         if (code == "name_length") { return @tr("The route name must be at most 64 characters."); }
-        if (code == "name_chars") { return @tr("The route name contains control characters."); }
+        if (code == "name_chars") { return @tr("The route name contains control or invisible characters."); }
         if (code == "not_twitch") { return @tr("Only Twitch ingest servers on port 1935 are accepted."); }
         if (code == "url_scheme") { return @tr("Only rtmp:// and rtmps:// server URLs are supported."); }
         if (code == "url_no_host") { return @tr("The server URL has no host name."); }
