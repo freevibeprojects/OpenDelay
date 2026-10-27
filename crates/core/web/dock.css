@@ -4,7 +4,7 @@ body { background: var(--bg-base); padding: 12px; font-size: 13px; }
 main { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .card { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: 14px; }
 .row { display: flex; align-items: center; gap: 8px; }
-.row.between { justify-content: space-between; }
+.row.between { justify-content: space-between; flex-wrap: wrap; }
 .hero { text-align: center; }
 .number { font-size: 64px; font-weight: 700; line-height: 1.1; margin: 6px 0 2px; }
 .number small { font-size: 22px; font-weight: 600; color: var(--text-secondary); margin-left: 4px; }
@@ -15,7 +15,16 @@ main { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; 
 .actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper output { min-width: 72px; text-align: center; font-weight: 600; font-size: 15px; }
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+/* Narrow docks (OBS at 200% zoom): smaller margins and digits so nothing is cut off. */
+@media (max-width: 260px) {
+  body { padding: 6px; }
+  .card { padding: 10px; }
+  .number { font-size: 44px; }
+  .stepper { gap: 4px; }
+  .stepper output { min-width: 48px; }
+  .stepper button.round { width: 30px; }
+}
 .stat .v { font-size: 16px; font-weight: 600; margin-top: 2px; }
 .label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 #banner { display: none; border-color: color-mix(in srgb, var(--error) 50%, transparent); background: color-mix(in srgb, var(--error) 12%, var(--bg-surface)); }
