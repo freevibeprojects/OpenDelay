@@ -32,7 +32,7 @@
  "caption_buffering": "Viewers are {} behind, switching at a keyframe…",
  "caption_draining": "Switching at the next keyframe…",
  "caption_recovering": "Reconnecting to the platform…",
- "unreachable": "OpenDelay is not running",
+ "unreachable": "Can't reach OpenDelay",
  "badge_delay": "DELAY ON",
  "badge_live": "LIVE",
  "badge_going_live": "GOING LIVE",

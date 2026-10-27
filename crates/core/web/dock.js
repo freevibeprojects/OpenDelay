@@ -16,6 +16,9 @@ function hms(ms) {
 }
 
 function render(st, err) {
+  // Unreachable: grey out the last numbers and controls instead of showing them as current.
+  document.body.classList.toggle("stale", !st);
+  ["toggle", "golive", "minus", "plus", "overlay"].forEach((id) => { $(id).inert = !st; });
   if (!st) {
     $("pill").textContent = OD.t("unreachable");
     $("pill").style.setProperty("--tone", "var(--error)");
@@ -36,7 +39,7 @@ function render(st, err) {
   const fill = d.bufferTargetMs ? Math.min(1, d.bufferFillMs / d.bufferTargetMs) : 0;
   $("bufferbar").style.width = `${Math.round(fill * 100)}%`;
   $("bufferbar").style.background = d.ready ? "var(--accent)" : "var(--warning)";
-  $("buffertext").textContent = st.connected ? `${Math.floor(d.bufferFillMs / 1000)} / ${Math.floor(d.bufferTargetMs / 1000)} s` : "—";
+  $("buffertext").textContent = st.connected ? `${Math.floor(Math.min(d.bufferFillMs, d.bufferTargetMs) / 1000)} /${Math.floor(d.bufferTargetMs / 1000)} s` : "—";
   $("bitrate").textContent = st.connected ? `${(st.bitrateKbps / 1000).toFixed(1)} Mb/s` : "—";
   $("uptime").textContent = st.connected ? hms(st.uptimeMs) : "—";
   $("banner").style.display = st.emergencyStop ? "block" : "none";

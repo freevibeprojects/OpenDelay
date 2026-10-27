@@ -53,18 +53,23 @@ const OD = (() => {
     return r.json();
   }
 
-  // Poll status every second, every 150 ms for 3 s after a command.
+  // Poll status every second, every 150 ms for 3 s after a command, and
+  // back off to every 5 s while OpenDelay does not answer.
   function poll(render) {
     let fastUntil = 0;
     let timer = 0;
+    let failures = 0;
     async function tick() {
       clearTimeout(timer);
       try {
         render(await status(), null);
+        failures = 0;
       } catch (e) {
         render(null, e);
+        failures++;
       }
-      timer = setTimeout(tick, Date.now() < fastUntil ? 150 : 1000);
+      const wait = failures ? Math.min(5000, 1000 * 2 ** (failures - 1)) : 1000;
+      timer = setTimeout(tick, Date.now() < fastUntil ? 150 : wait);
     }
     tick();
     return () => {
