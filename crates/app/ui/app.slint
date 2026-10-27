@@ -64,26 +64,6 @@ export component MainWindow inherits Window {
     in-out property <int> page: 0;
     callback close-requested();
 
-    // Slow drifting violet glow behind the content (disableable). It moves in
-    // 2–3 px steps twice a second instead of a per-frame animation: on a soft,
-    // faint glow the steps are invisible, and an idle window repaints twice a
-    // second rather than at display rate (~1 % CPU instead of ~40 %).
-    property <bool> animate-bg: AppState.background-animation && !Theme.reduce-motion;
-    property <float> drift: 0;
-    Rectangle {
-        x: parent.width * (0.3 + 0.15 * sin(root.drift * 1deg));
-        y: -parent.height * (0.25 + 0.1 * cos(root.drift * 0.7deg));
-        width: parent.width * 0.9;
-        height: parent.height * 0.9;
-        background: @radial-gradient(circle, #7f63f01c 0%, #7f63f000 65%);
-        visible: AppState.background-animation;
-    }
-    Timer {
-        interval: 500ms;
-        running: root.animate-bg;
-        triggered => { root.drift += 1; }
-    }
-
     HorizontalLayout {
         // Sidebar
         Rectangle {

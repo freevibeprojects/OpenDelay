@@ -101,7 +101,6 @@ export global AppState {
     in property <string> update-status;
     in property <bool> update-available;
     in property <bool> reduce-motion;
-    in property <bool> background-animation: true;
     in property <string> listener-mode: "local";
     in property <bool> restart-required;
     in property <string> lan-addresses;
@@ -147,7 +146,6 @@ export global AppState {
     callback check-update();
     callback download-update();
     callback set-reduce-motion(bool);
-    callback set-background-animation(bool);
     callback set-listener-mode(string);
     callback new-lan-key();
     callback add-to-obs();

@@ -64,15 +64,6 @@ export component SettingsPage {
                 }
                 Divider { }
                 SettingRow {
-                    title: @tr("Animated background");
-                    Toggle {
-                        label: @tr("Animated background");
-                        checked: AppState.background-animation;
-                        toggled(on) => { AppState.set-background-animation(on); }
-                    }
-                }
-                Divider { }
-                SettingRow {
                     title: @tr("Setup assistant");
                     description: @tr("Walk through the first-run setup again.");
                     Button {

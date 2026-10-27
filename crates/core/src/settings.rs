@@ -67,7 +67,6 @@ pub struct Settings {
     /// Overlay badge colour (palette name).
     pub overlay_color: String,
     pub reduce_motion: bool,
-    pub background_animation: bool,
     /// OpenDelay was added to OBS's service list; kept up to date with the routes.
     pub obs_service: bool,
     /// Fields this version does not know (e.g. from a newer version), kept on save.
@@ -95,7 +94,6 @@ impl Default for Settings {
             hotkeys: Hotkeys::default(),
             overlay_color: "violet".into(),
             reduce_motion: false,
-            background_animation: true,
             obs_service: false,
             extra: serde_json::Map::new(),
         }

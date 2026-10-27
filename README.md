@@ -98,8 +98,10 @@ PATH=~/.local/xwin-bin:$PATH cargo xwin build --release --target x86_64-pc-windo
   Hyprland), which asks you to confirm the shortcuts. Compositors without that
   portal (e.g. sway) allow no global shortcuts: bind your desktop's own
   shortcuts to the controller WebSocket or the HTTP API instead.
-- **Rendering** is done on the CPU (no GPU or OpenGL needed), so it also works
-  in VMs and remote desktops.
+- **Rendering** is done on the CPU (no GPU or OpenGL needed), so the GPU stays
+  free for the encoder and it also works in VMs and remote desktops. Only what
+  changes is redrawn: an idle window draws nothing. On high-DPI displays,
+  Settings → Reduce motion also turns off the rolling digits.
 - **One instance**: starting OpenDelay again brings the running window forward.
 - **Start with the system** writes the per-user `Run` registry value on
   Windows and `~/.config/autostart/opendelay.desktop` on Linux.

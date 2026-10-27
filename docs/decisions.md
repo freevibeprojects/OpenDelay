@@ -307,9 +307,9 @@ Each entry: the decision, then why.
 
 - The tokio runtime uses two worker threads (plus the blocking pool for the
   Twitch list and update downloads).
-- The drifting background moves in small steps twice a second instead of a
-  per-frame animation; a per-frame animation keeps the GPU busy at display
-  rate even when nothing changes.
+- No animated background: the window is drawn on the CPU and redraws only
+  what changed, so an idle window draws nothing. A full-window animation
+  redraws every pixel, four times as many at 200% display scale.
 - LAN addresses (one syscall per interface) are cached for 10 s instead of
   being enumerated on every status poll; the UI fetches settings once per
   refresh.
@@ -321,10 +321,13 @@ Each entry: the decision, then why.
   `compat-1-18` (required), `backend-winit` (X11 + Wayland on Linux, Win32),
   `renderer-software`, `accessibility` and `system-tray`. `slint-build` runs
   without its default compile-time software-renderer resources.
-- **CPU rendering only**: measured on Windows with an NVIDIA GPU, the window
-  idles at about 1% of one core with 10 MB private memory, against 0.2% and
-  132 MB with the OpenGL (FemtoVG) renderer, most of it driver memory. One
-  renderer also removes the OpenGL failure fallback (VMs, remote desktops).
+- **CPU rendering only**, so the GPU stays free for the encoder. Measured on
+  Windows with an NVIDIA GPU, the window (1180×800) uses 10 MB private memory
+  (21 MB at 200% scale), against 132 MB with the OpenGL (FemtoVG) renderer,
+  most of it driver memory. CPU use, idle / streaming / while a delay builds
+  up: 0% / 0.2% / 0.4% of one core at 100% scale, 0% / 0.2% / 1.2% at 200%;
+  the last is the rolling digits, 0.2% with Reduce motion. One renderer also
+  removes the OpenGL failure fallback (VMs, remote desktops).
 - **Tray host detection** on Linux asks the session bus for
   `org.kde.StatusNotifierWatcher`; without it no tray is created and closing
   the window quits. "Keep in tray" is the default everywhere else.

@@ -243,7 +243,6 @@ impl Ui {
         s.set_update_check(st.update_check);
         s.set_reduce_motion(st.reduce_motion);
         self.window.global::<Theme>().set_reduce_motion(st.reduce_motion);
-        s.set_background_animation(st.background_animation);
         s.set_overlay_color(ss(&st.overlay_color));
         s.set_custom_delay_s(st.hotkeys.custom_delay_secs as i32);
         s.set_hk_enable(ss(hotkeys::display(&st.hotkeys.enable_delay)));
@@ -637,9 +636,6 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }));
     s.on_set_reduce_motion(with_ui!(|u, on| {
         u.save(|s| s.reduce_motion = on);
-    }));
-    s.on_set_background_animation(with_ui!(|u, on| {
-        u.save(|s| s.background_animation = on);
     }));
     s.on_set_listener_mode(with_ui!(|u, mode| {
         let mode = if mode == "lan" { ListenerMode::Lan } else { ListenerMode::Local };

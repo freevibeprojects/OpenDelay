@@ -69,8 +69,8 @@ at ~30% with a faint top inner highlight on panels.
   - Buffer fill progress bar (accent fill, warning colour while not ready).
   - Row of small stat cards: bitrate, uptime, buffer, current delay.
   - Health warnings card (warning colour accents), hidden when healthy.
-- **Background**: optional, subtle slow-moving dark violet gradient/noise
-  behind the content (cheap to render; must be disableable in settings).
+- **Background**: plain `bg-base`, not animated (the window is drawn on the
+  CPU and redraws only what changes).
 - **Modals**: centred card, dimmed + blurred backdrop, scale-in.
 - **Toasts**: bottom-centre, short-lived, success/warning/error tint.
 - **Help button**: small floating round button bottom-right.
