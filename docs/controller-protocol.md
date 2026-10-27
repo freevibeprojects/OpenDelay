@@ -29,7 +29,7 @@ ws://127.0.0.1:3000/ws
 On connect the server sends:
 
 ```json
-{ "type": "hello", "app": "OpenDelay", "version": "0.1.0", "protocol": 1 }
+{ "type": "hello", "app": "OpenDelay", "version": "1.0.0", "protocol": 1 }
 ```
 
 Clients should check `protocol` and ignore message fields they do not know.
@@ -113,7 +113,7 @@ All durations are milliseconds.
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "1.0.0",
   "state": "delayed",
   "connected": true,
   "uptimeMs": 754000,
