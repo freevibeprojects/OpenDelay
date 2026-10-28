@@ -98,10 +98,15 @@ pub fn tray_host_available() -> bool {
 /// local process may read (the API's protections target web pages).
 pub fn activate_running_instance(port: u16) -> bool {
     use std::io::{Read, Write};
-    use std::net::{SocketAddr, TcpStream};
+    use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::time::Duration;
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    // A free port means nothing runs there: skip the connection attempt,
+    // which Windows takes half a second to refuse.
+    if TcpListener::bind(addr).is_ok() {
+        return false;
+    }
     let request = |head: String| -> Option<String> {
-        let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(500)).ok()?;
         s.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
         s.write_all(head.as_bytes()).ok()?;
