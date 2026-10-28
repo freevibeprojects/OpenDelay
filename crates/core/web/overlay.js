@@ -22,7 +22,7 @@ function render(st) {
   $("icon-live").classList.toggle("off", delayed);
   $("label").textContent = d.state === "draining" ? OD.t("badge_going_live") : delayed ? OD.t("badge_delay") : OD.t("badge_live");
   const seconds = d.state === "buffering" ? d.targetMs / 1000 : d.currentMs / 1000;
-  $("value").textContent = delayed && d.state !== "draining" ? OD.duration(Math.ceil(seconds)) : "";
+  $("value").textContent = delayed && d.state !== "draining" ? OD.duration(Math.round(seconds)) : "";
   $("progress").style.width = d.progress == null ? "0" : `${Math.round(d.progress * 100)}%`;
   const show = preview || (st.overlayVisible && st.connected);
   badge.classList.toggle("hidden", !show);

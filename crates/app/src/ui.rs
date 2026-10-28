@@ -131,7 +131,8 @@ impl Ui {
         if let Some(t) = &self.tray {
             t.set_delay_active(active);
         }
-        s.set_current_delay_s(st.delay.current_ms.div_ceil(1000) as i32);
+        // rounded: a switch lands up to half a second past the delay set
+        s.set_current_delay_s(((st.delay.current_ms + 500) / 1000) as i32);
         s.set_target_delay_s((st.delay.target_ms / 1000) as i32);
         s.set_configured_delay_s((st.delay.configured_ms / 1000) as i32);
         s.set_buffer_s(cfg.buffer.as_secs() as i32);
