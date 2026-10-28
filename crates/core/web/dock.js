@@ -33,9 +33,14 @@ function render(st, err) {
   const active = st.connected && ["delayed", "buffering", "draining"].includes(d.state);
   pill(OD.t("state_" + st.state));
   $("pill").style.setProperty("--tone", TONES[st.state] || TONES.offline);
-  $("digits").textContent = Math.ceil((active ? d.currentMs : d.configuredMs) / 1000);
+  // How far behind viewers are now (0 when live); the stepper below shows the delay setting.
+  $("digits").textContent = Math.ceil(d.currentMs / 1000);
   $("number").classList.toggle("active", active);
-  $("caption").textContent = OD.t("caption_" + st.state, OD.duration(Math.ceil(d.currentMs / 1000)));
+  const behind = OD.duration(Math.ceil(d.currentMs / 1000));
+  const finishing = (st.streams || []).some((s) => s.phase === "finishing");
+  $("caption").textContent = finishing ? OD.t("caption_finishing", behind)
+    : st.state === "buffering" ? OD.t("caption_buffering", `${Math.round((d.progress || 0) * 100)}%`)
+    : OD.t("caption_" + st.state, behind);
   $("toggle").textContent = active ? OD.t("disable") : OD.t("enable");
   const hadFocus = document.activeElement === $("golive");
   // Stays enabled while going live so keyboard focus has somewhere to land; a press then only says to wait.
@@ -62,6 +67,8 @@ function render(st, err) {
 async function run(action, extra) {
   const r = await OD.act(action, extra).catch(() => null);
   $("toast").textContent = !r ? OD.t("unreachable") : r.success ? "" : OD.t("r_" + r.code);
+  // In a short dock the message can sit below the fold.
+  if ($("toast").textContent) $("toast").scrollIntoView({ block: "nearest" });
   refreshNow();
 }
 
