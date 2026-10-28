@@ -9,8 +9,6 @@ import { AppState, Strings } from "../state.slint";
 // nudge it by 5 s or pick a preset.
 component DelayInput {
     property <int> backend: AppState.configured-delay-s;
-    // ±5 changes wait for a short pause, so several clicks make one switch.
-    property <int> pending: -1;
     property <bool> editing: field.has-focus;
     accessible-role: spinbox;
     accessible-label: @tr("Delay in seconds");
@@ -20,7 +18,7 @@ component DelayInput {
 
     init => { field.text = root.backend; }
     changed backend => {
-        if (!root.editing && root.pending < 0) {
+        if (!root.editing) {
             field.text = root.backend;
         }
     }
@@ -42,24 +40,11 @@ component DelayInput {
         }
     }
 
+    // Applied on every click: while a switch is pending, another change only
+    // moves its target, so quick clicks still make one jump.
     function nudge(d: int) {
-        root.pending = clamp((root.pending < 0 ? root.backend : root.pending) + d, 1, 600);
-        field.text = root.pending;
-        // restart() alone does not start a stopped Timer.
-        commit.running = true;
-        commit.restart();
-    }
-
-    commit := Timer {
-        interval: 400ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            if (root.pending >= 0) {
-                AppState.set-delay(root.pending);
-                root.pending = -1;
-            }
-        }
+        AppState.set-delay(clamp(root.backend + d, 1, 600));
+        field.text = root.backend;
     }
 
     VerticalLayout {
@@ -103,7 +88,6 @@ component DelayInput {
                 font-size: 13px;
                 pad: 10px;
                 clicked => {
-                    root.pending = -1;
                     field.text = p;
                     if (p != root.backend) {
                         AppState.set-delay(p);

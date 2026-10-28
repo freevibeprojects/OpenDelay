@@ -7,7 +7,7 @@ const TONES = { live: "var(--success)", delayed: "var(--accent-hover)", bufferin
                 offline: "var(--text-secondary)" };
 let last = null;
 let pendingDelay = null;
-let commitTimer = 0;
+let sending = false;
 let refreshNow = () => {};
 
 function hms(ms) {
@@ -74,16 +74,23 @@ async function run(action, extra) {
   refreshNow();
 }
 
+// Every step is sent at once; while a request is out only the newest value
+// waits, so a held button never queues stale ones.
 function step(dir) {
   const base = pendingDelay ?? (last ? last.delay.configuredMs / 1000 : 30);
   pendingDelay = Math.min(600, Math.max(1, base + dir));
   $("delay").textContent = OD.duration(pendingDelay);
-  clearTimeout(commitTimer);
-  commitTimer = setTimeout(() => {
-    const seconds = pendingDelay;
-    pendingDelay = null;
-    run("setDelay", { seconds });
-  }, 400);
+  send();
+}
+
+async function send() {
+  if (sending || pendingDelay === null) return;
+  sending = true;
+  const seconds = pendingDelay;
+  await run("setDelay", { seconds });
+  sending = false;
+  if (pendingDelay === seconds) pendingDelay = null;
+  else send();
 }
 
 // Press and hold accelerates.
