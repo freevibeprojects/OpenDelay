@@ -81,7 +81,7 @@ function step(dir) {
     const seconds = pendingDelay;
     pendingDelay = null;
     run("setDelay", { seconds });
-  }, 700);
+  }, 400);
 }
 
 // Press and hold accelerates.

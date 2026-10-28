@@ -277,6 +277,8 @@ async fn delay_actions_through_the_relay() {
     let start = tokio::time::Instant::now();
     enc.send_paced(&stream[..split], start, 0).await;
 
+    let mut changes = relay.subscribe();
+    changes.borrow_and_update();
     let msg = relay.enable_delay(None).expect("instant enable");
     assert!(msg.starts_with("Delay on"), "{msg}");
     assert_eq!(relay.enable_delay(None).unwrap_err().code(), "already_active");
@@ -292,6 +294,7 @@ async fn delay_actions_through_the_relay() {
     assert!(is_keyframe(key), "replay starts on a keyframe");
     let before = got[..replay].iter().rev().find_map(frame_no).unwrap();
     assert!(frame_no(key).unwrap() + 30 <= before, "replay jumps back at least 1 s");
+    assert!(changes.has_changed().unwrap(), "the jump is pushed to status subscribers");
     for t in [msg_type::AUDIO, msg_type::VIDEO] {
         let ts: Vec<u32> = got.iter().filter(|m| m.type_id == t).map(|m| m.timestamp).collect();
         assert!(ts.windows(2).all(|w| w[1] >= w[0]), "track {t} never decreases upstream");

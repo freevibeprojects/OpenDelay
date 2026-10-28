@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! Desktop UI glue: pushes status and settings into the Slint `AppState`
 //! global and turns its callbacks into core actions. Status is polled every
-//! second, and every 100 ms for a few seconds after a command or while a
+//! second, within 100 ms of a change (a stream connects or ends, the delay
+//! jumps), and every 100 ms for a few seconds after a command or while a
 //! transition runs.
 
 use crate::hotkeys::{self, Binder, Which};
@@ -726,12 +727,13 @@ impl Ui {
         self.tray.is_some()
     }
 
-    /// Poll status: every second, or every 100 ms right after a command and
-    /// while the delay is changing.
+    /// Poll status: every second, within 100 ms of a change, or every 100 ms
+    /// right after a command and while the delay is changing.
     pub fn start_polling(self: &Rc<Self>) -> Timer {
         let timer = Timer::default();
         let weak = Rc::downgrade(self);
         let last = Cell::new(Instant::now());
+        let mut changes = self.app.subscribe();
         timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             let Some(u) = weak.upgrade() else { return };
             if u.app.take_show_request() {
@@ -752,7 +754,11 @@ impl Ui {
             }
             let state = u.state().get_state();
             let busy = now < u.fast_until.get() || state == "buffering" || state == "draining";
-            if busy || now.duration_since(last.get()) >= Duration::from_secs(1) {
+            let changed = changes.has_changed().unwrap_or(false);
+            if changed {
+                changes.borrow_and_update();
+            }
+            if busy || changed || now.duration_since(last.get()) >= Duration::from_secs(1) {
                 last.set(now);
                 u.refresh();
             }

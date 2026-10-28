@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 use tokio::net::TcpStream;
 use tokio::sync::Notify;
+use tokio::sync::watch;
 use tokio::time::{sleep, sleep_until, timeout, timeout_at};
 use tokio_rustls::rustls::ClientConfig;
 use tokio_util::sync::CancellationToken;
@@ -95,6 +96,8 @@ pub struct Session {
     pub(crate) kept_upstream: Mutex<Option<KeptUpstream>>,
     /// Stream key from the encoder's `publish`.
     pub(crate) publish_key: std::sync::OnceLock<String>,
+    /// The relay's change counter (status pushes).
+    changed: Arc<watch::Sender<u64>>,
 }
 
 struct Health {
@@ -122,6 +125,11 @@ impl Session {
         let last_error = error.map(|e| self.log.redact(&e));
         *self.info.lock().unwrap_or_else(|e| e.into_inner()) =
             SessionInfo { phase, recovery_attempt: attempt, last_error };
+        self.changed();
+    }
+
+    fn changed(&self) {
+        self.changed.send_modify(|v| *v += 1);
     }
 
     pub fn is_claimed(&self) -> bool {
@@ -285,6 +293,7 @@ fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<S
         replaced: AtomicBool::new(false),
         kept_upstream: Mutex::new(None),
         publish_key: std::sync::OnceLock::new(),
+        changed: relay.changed.clone(),
     })
 }
 
@@ -830,6 +839,8 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
                     None
                 }
                 Poll::ResetHeaders => {
+                    // a jump: the delay viewers see changed
+                    sess.changed();
                     writer.reset_headers();
                     continue;
                 }
@@ -891,5 +902,6 @@ pub(crate) fn test_session(id: u64, path: &str, ip: [u8; 4]) -> Arc<Session> {
         replaced: AtomicBool::new(false),
         kept_upstream: Mutex::new(None),
         publish_key: std::sync::OnceLock::new(),
+        changed: Arc::new(watch::Sender::new(0)),
     })
 }

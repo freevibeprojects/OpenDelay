@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tokio_rustls::rustls::ClientConfig;
 use tokio_util::sync::CancellationToken;
 
@@ -141,6 +142,8 @@ pub(crate) struct Shared {
     /// Per route path: the buffer of a delayed session that a reconnecting
     /// encoder replaced, for the new session to continue.
     handovers: Mutex<HashMap<String, Handover>>,
+    /// Bumped when a stream connects, ends, changes phase or jumps (status pushes).
+    pub changed: Arc<watch::Sender<u64>>,
 }
 
 /// How long a reconnecting encoder still gets the delay its route ended with.
@@ -247,6 +250,7 @@ impl Shared {
 
     pub fn remove_session(&self, id: u64) {
         self.lock_sessions().retain(|s| s.id != id);
+        self.changed.send_modify(|v| *v += 1);
     }
 
     fn on_route(&self, route: &Route) -> Vec<Arc<Session>> {
@@ -372,8 +376,18 @@ impl Relay {
                 log_dir: opts.log_dir,
                 kept_delays: Mutex::default(),
                 handovers: Mutex::default(),
+                changed: Arc::new(watch::Sender::new(0)),
             }),
         }
+    }
+
+    /// Change counter: bumped on stream and delay changes, and by [`Relay::notify`].
+    pub fn subscribe(&self) -> watch::Receiver<u64> {
+        self.shared.changed.subscribe()
+    }
+
+    pub fn notify(&self) {
+        self.shared.changed.send_modify(|v| *v += 1);
     }
 
     /// Bind an RTMP listener and accept encoders until shutdown.

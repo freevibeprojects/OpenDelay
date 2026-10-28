@@ -53,21 +53,47 @@ const OD = (() => {
     return r.json();
   }
 
-  // Poll status every second, every 150 ms for 3 s after a command, and
-  // back off to every 5 s while OpenDelay does not answer.
+  // Status is pushed over the WebSocket right after every change. Without it,
+  // poll every second, every 150 ms for 3 s after a command, and back off to
+  // every 5 s while OpenDelay does not answer.
   function poll(render) {
     let fastUntil = 0;
     let timer = 0;
     let failures = 0;
+    let ws = null;
+    let wsRetryAt = 0;
+    function connect() {
+      const s = new WebSocket(`ws://${location.host}/ws`);
+      let pushed = false;
+      ws = s;
+      s.onopen = () => s.send(JSON.stringify({ action: "subscribe" }));
+      s.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.type === "status") {
+          pushed = true;
+          render(m.status, null);
+        }
+      };
+      s.onclose = () => {
+        if (ws !== s) return;
+        ws = null;
+        // A socket that never delivered a status is not retried for a while.
+        if (!pushed) wsRetryAt = Date.now() + 10000;
+        tick();
+      };
+    }
     async function tick() {
       clearTimeout(timer);
+      if (ws) return;
       try {
         render(await status(), null);
         failures = 0;
+        if (Date.now() >= wsRetryAt && typeof WebSocket === "function") connect();
       } catch (e) {
         render(null, e);
         failures++;
       }
+      if (ws) return;
       const wait = failures ? Math.min(5000, 1000 * 2 ** (failures - 1)) : 1000;
       timer = setTimeout(tick, Date.now() < fastUntil ? 150 : wait);
     }

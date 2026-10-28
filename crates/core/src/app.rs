@@ -181,7 +181,6 @@ pub struct App {
     active_listener: ListenerMode,
     rtmp_port: AtomicU16,
     http_port: AtomicU16,
-    changed: watch::Sender<u64>,
 }
 
 fn delay_config(s: &Settings) -> DelayConfig {
@@ -295,7 +294,6 @@ impl App {
             token: random_token(),
             rtmp_port: AtomicU16::new(RTMP_PORT),
             http_port: AtomicU16::new(HTTP_PORT),
-            changed: watch::Sender::new(0),
         });
         // Delay actions (UI thread, hotkeys, HTTP workers) must not wait for
         // the disk: their settings are written here, coalesced.
@@ -353,13 +351,14 @@ impl App {
         self.rtmp_port.load(Ordering::Relaxed)
     }
 
-    /// Change counter, bumped after every action or settings change.
+    /// Change counter, bumped after every action or settings change and when
+    /// a stream connects, ends or its delay jumps.
     pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.changed.subscribe()
+        self.relay.subscribe()
     }
 
     fn notify(&self) {
-        self.changed.send_modify(|v| *v += 1);
+        self.relay.notify();
     }
 
     /// Bind the RTMP listener(s) for the listener mode in effect.
