@@ -333,7 +333,8 @@ impl HealthAnalyzer {
                     0.9,
                     String::new(),
                     String::new(),
-                    "The stream has no video: viewers see a black picture.".into(),
+                    "The stream has no video: viewers see a black picture. Add a video source to the encoder scene."
+                        .into(),
                 );
             }
             if self.frames > 0 && self.audio_frames == 0 {
@@ -343,7 +344,7 @@ impl HealthAnalyzer {
                     0.9,
                     String::new(),
                     String::new(),
-                    "The stream has no audio; some platforms mute or refuse such streams.".into(),
+                    "The stream has no audio; some platforms mute or refuse such streams. Check the encoder audio sources.".into(),
                 );
             }
         }
@@ -356,7 +357,9 @@ impl HealthAnalyzer {
                     0.7,
                     kbit(kbps),
                     kbit(LOW_KBPS),
-                    format!("The stream is only {kbps} kbit/s; video will look blocky."),
+                    format!(
+                        "The stream is only {kbps} kbit/s (video and audio); video will look blocky. Raise the encoder bitrate."
+                    ),
                 );
             }
             if let Some(max) = self.max_kbps.filter(|max| kbps > *max) {
@@ -366,7 +369,9 @@ impl HealthAnalyzer {
                     0.7,
                     kbit(kbps),
                     kbit(max),
-                    format!("{kbps} kbit/s is above the {max} kbit/s the platform takes reliably."),
+                    format!(
+                        "{kbps} kbit/s (video and audio) is above the {max} kbit/s this platform takes reliably. Lower the encoder bitrate."
+                    ),
                 );
             }
         }

@@ -295,16 +295,16 @@ export global Strings {
     public pure function finding-detail(code: string, value: string, limit: string) -> string {
         if (code == "codec") { return @tr("{} cannot be switched instantly. Use H.264, HEVC or AV1 in your encoder.", value); }
         if (code == "keyframe_interval") { return @tr("Keyframes arrive every {}. Platforms such as Twitch may show viewers a black screen, and the delay can only switch on a keyframe. Set the keyframe interval to {} in your encoder (OBS: Settings → Output, Advanced mode).", value, limit); }
-        if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall.", value); }
-        if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder for cleaner switches."); }
+        if (code == "keyframes_missing") { return @tr("No keyframe for {}. The delay cannot switch and reconnects stall. In OBS: Settings → Output (Advanced mode) → Keyframe Interval: 2.", value); }
+        if (code == "b_frames") { return @tr("Set B-frames to 0 in your encoder settings (OBS: Settings → Output, Advanced mode) for cleaner switches."); }
         if (code == "timestamps") { return @tr("The encoder sends timestamps out of order or with gaps. Check its settings and the CPU load."); }
         if (code == "slow_start") { return @tr("The first keyframe arrived {} after publishing started.", value); }
         if (code == "resolution") { return @tr("{} is above the platform limit of {}. Lower the output resolution.", value, limit); }
         if (code == "upload_slow") { return @tr("Your upload is slower than the stream, so OpenDelay skips ahead to keep viewers at the delay. Lower the bitrate in your encoder."); }
-        if (code == "no_video") { return @tr("The stream has no video: viewers see a black picture."); }
-        if (code == "no_audio") { return @tr("The stream has no audio. Some platforms mute or refuse such streams."); }
-        if (code == "bitrate_low") { return @tr("The stream is only {}; video will look blocky. Raise the bitrate in your encoder.", value); }
-        if (code == "bitrate_high") { return @tr("{} is above the {} the platform takes reliably. Lower the bitrate in your encoder.", value, limit); }
+        if (code == "no_video") { return @tr("The stream has no video: viewers see a black picture. Add a video source to your OBS scene."); }
+        if (code == "no_audio") { return @tr("The stream has no audio. Some platforms mute or refuse such streams. Check the OBS Audio Mixer: is your mic or desktop audio on and not muted?"); }
+        if (code == "bitrate_low") { return @tr("The stream is only {} (video and audio together); video will look blocky. Raise the video bitrate in OBS, Settings → Output: about 2500–6000 Kbps.", value); }
+        if (code == "bitrate_high") { return @tr("{} (video and audio together) is above the {} this platform takes reliably. Lower the video bitrate in OBS, Settings → Output.", value, limit); }
         ""
     }
 
