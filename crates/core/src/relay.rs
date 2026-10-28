@@ -92,9 +92,14 @@ impl Drop for Admission {
     }
 }
 
+/// Same wording as the window and dock: `45 s`, `2 min`, `1 min 10 s`.
 fn secs(d: Duration) -> String {
     let s = d.as_secs();
-    if s >= 60 && s.is_multiple_of(60) { format!("{} min", s / 60) } else { format!("{s} s") }
+    match (s / 60, s % 60) {
+        (0, s) => format!("{s} s"),
+        (m, 0) => format!("{m} min"),
+        (m, s) => format!("{m} min {s} s"),
+    }
 }
 
 pub struct RelayOptions {
@@ -623,6 +628,15 @@ impl Relay {
 mod tests {
     use super::*;
     use crate::session::test_session;
+
+    #[test]
+    fn durations_read_like_the_ui() {
+        let f = |s| secs(Duration::from_secs(s));
+        assert_eq!(
+            (f(45), f(60), f(70), f(600)),
+            ("45 s".into(), "1 min".into(), "1 min 10 s".into(), "10 min".into())
+        );
+    }
 
     #[test]
     fn emergency_stop_wins_against_late_registration_and_claims() {
