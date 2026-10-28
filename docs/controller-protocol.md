@@ -64,7 +64,7 @@ Every request gets exactly one response:
 
 When `success` is `false`, `code` is a machine-readable reason and `message`
 explains it in English. For `invalid_in_mode` and `invalid_value`, `detail`
-names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
+names the cause (`go_live_first`, `delay_range`,
 `buffer_range`, `not_a_number`); it is `null` otherwise. Malformed or unknown requests also get a response
 (never a disconnect).
 
@@ -75,11 +75,11 @@ names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
 | `getStatus` | — | Reply with the current status only. |
 | `subscribe` | — | Start receiving `status` pushes (see below). |
 | `unsubscribe` | — | Stop status pushes. |
-| `enableDelay` | `seconds` (optional, 1–600) | Turn the delay on with the configured or the given duration. |
+| `enableDelay` | `seconds` (optional, 1–600) | Turn the delay on with the configured or the given duration (which becomes the configured delay). |
 | `goLive` (alias `disableDelay`) | — | Turn the delay off and return to live. |
 | `toggleDelay` | — | `enableDelay` if live, otherwise `goLive`. |
 | `setDelay` | `seconds` (1–600) | Change the delay; applies immediately when active and to the next activation. |
-| `setBuffer` | `seconds` (5–600) | Change the rolling buffer length. |
+| `setBuffer` | `seconds` (5–600) | Change the rolling buffer length; the buffer kept is never shorter than the delay. |
 | `setDelayMode` | `enabled` (bool) | Turn the rolling-buffer feature on or off as a whole. |
 | `toggleOverlay` | — | Show or hide the on-stream overlay. |
 | `setOverlayVisible` | `visible` (bool) | Show or hide the overlay explicitly. |

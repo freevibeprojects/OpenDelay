@@ -495,7 +495,7 @@ impl App {
             target_ms: 0,
             configured_ms: cfg.delay.as_millis() as u64,
             buffer_fill_ms: 0,
-            buffer_target_ms: if cfg.mode_enabled { cfg.buffer.as_millis() as u64 } else { 0 },
+            buffer_target_ms: cfg.retain().as_millis() as u64,
             ready: false,
             max_delay_ms: 0,
             progress: None,

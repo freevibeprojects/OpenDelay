@@ -77,7 +77,7 @@ pub enum Refusal {
     AlreadyActive,
     AlreadyLive,
     DelayModeOff,
-    /// Detail code: `go_live_first`, `buffer_below_delay`.
+    /// Detail code: `go_live_first`.
     InvalidInMode(&'static str),
     TransitionInProgress,
     Unsustainable {
@@ -117,7 +117,6 @@ impl Refusal {
 fn detail_text(code: &str) -> &'static str {
     match code {
         "go_live_first" => "Go live before turning delay mode off.",
-        "buffer_below_delay" => "The buffer cannot be shorter than the active delay.",
         "delay_range" => "The delay must be between 1 second and 10 minutes.",
         "buffer_range" => "The buffer must be between 5 seconds and 10 minutes.",
         "not_a_number" => "Invalid number of seconds.",
@@ -502,17 +501,10 @@ impl Engine {
         self.target()
     }
 
-    /// Whether the rolling buffer may shrink to `retain`.
-    pub fn check_retain(&self, retain: Duration) -> Result<(), Refusal> {
-        if self.target() > retain {
-            return Err(Refusal::InvalidInMode("buffer_below_delay"));
-        }
-        Ok(())
-    }
-
-    /// Rolling buffer length (0 when delay mode is off).
+    /// Rolling buffer length (0 when delay mode is off); never below the
+    /// delay kept or being established.
     pub fn set_retain(&mut self, retain: Duration) {
-        self.retain = retain;
+        self.retain = retain.max(self.target());
     }
 
     pub fn retain(&self) -> Duration {
@@ -1015,7 +1007,8 @@ pub(crate) mod tests {
         assert_eq!(e.enable(Duration::ZERO, t0).unwrap_err().code(), "invalid_value");
         assert_eq!(e.enable(Duration::from_secs(30), t0), Ok(Enabled::Building { buffer_grown: false }));
         assert_eq!(e.enable(Duration::from_secs(30), t0), Err(Refusal::AlreadyActive));
-        assert_eq!(e.check_retain(Duration::from_secs(10)).unwrap_err().code(), "invalid_in_mode");
+        e.set_retain(Duration::from_secs(10));
+        assert_eq!(e.retain(), Duration::from_secs(30), "the buffer never shrinks below the delay");
         e.go_live(t0).unwrap(); // never jumped back: live at once
         assert_eq!(e.go_live(t0), Err(Refusal::AlreadyLive));
         // Going live waits for a keyframe that has not been sent yet.

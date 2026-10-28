@@ -23,7 +23,8 @@ use tokio_util::sync::CancellationToken;
 pub struct DelayConfig {
     /// Rolling-buffer feature on/off ("delay mode").
     pub mode_enabled: bool,
-    /// Rolling buffer length.
+    /// Rolling buffer length chosen by the user; the buffer kept is at
+    /// least the delay (see [`DelayConfig::retain`]).
     pub buffer: Duration,
     /// Delay used by "enable delay" without an explicit duration.
     pub delay: Duration,
@@ -36,8 +37,10 @@ impl Default for DelayConfig {
 }
 
 impl DelayConfig {
-    fn retain(&self) -> Duration {
-        if self.mode_enabled { self.buffer } else { Duration::ZERO }
+    /// Buffer kept: the chosen length, or the delay when that is longer, so
+    /// it shrinks back once a long delay is shortened again.
+    pub fn retain(&self) -> Duration {
+        if self.mode_enabled { self.buffer.max(self.delay) } else { Duration::ZERO }
     }
 }
 
@@ -539,9 +542,8 @@ impl Relay {
         let d = delay.unwrap_or(cfg.delay);
         Self::check_delay(d)?;
         let results = self.apply(|e, now| e.enable(d, now))?;
-        if d > cfg.buffer {
-            self.update_config(|c| c.buffer = d);
-        }
+        self.update_config(|c| c.delay = d);
+        self.apply_retain();
         let how = if results.contains(&Enabled::Instant) {
             "instant switch"
         } else if results.contains(&Enabled::NextKeyframe) {
@@ -579,10 +581,8 @@ impl Relay {
         if !active.is_empty() {
             self.apply(|e, now| if e.is_active() { e.set_delay(delay, now) } else { Ok(()) })?;
         }
-        self.update_config(|c| {
-            c.delay = delay;
-            c.buffer = c.buffer.max(delay);
-        });
+        self.update_config(|c| c.delay = delay);
+        self.apply_retain();
         self.log_all(&format!("Delay set to {}", secs(delay)));
         Ok(format!("Delay set to {}.", secs(delay)))
     }
@@ -592,17 +592,18 @@ impl Relay {
         if buffer < MIN_BUFFER || buffer > engine::MAX_DELAY {
             return Err(Refusal::InvalidValue("buffer_range"));
         }
-        let cfg = DelayConfig { buffer, ..self.delay_config() };
-        let sessions = self.streaming();
-        for s in &sessions {
-            s.engine().check_retain(cfg.retain())?;
-        }
-        for s in &sessions {
-            s.engine().set_retain(cfg.retain());
-        }
         self.update_config(|c| c.buffer = buffer);
+        self.apply_retain();
         self.log_all(&format!("Buffer set to {}", secs(buffer)));
         Ok(format!("Buffer set to {}.", secs(buffer)))
+    }
+
+    /// Resize every stream's buffer to the configuration (never below its delay).
+    fn apply_retain(&self) {
+        let retain = self.delay_config().retain();
+        for s in self.streaming() {
+            s.engine().set_retain(retain);
+        }
     }
 
     /// Turn the rolling-buffer feature on or off as a whole.
@@ -612,10 +613,7 @@ impl Relay {
             return Err(Refusal::InvalidInMode("go_live_first"));
         }
         self.update_config(|c| c.mode_enabled = on);
-        let retain = self.delay_config().retain();
-        for s in &sessions {
-            s.engine().set_retain(retain);
-        }
+        self.apply_retain();
         self.log_all(if on { "Delay mode on" } else { "Delay mode off" });
         Ok(if on { "Delay mode on." } else { "Delay mode off." }.into())
     }

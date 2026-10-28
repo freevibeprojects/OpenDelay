@@ -305,8 +305,16 @@ async fn delay_actions_through_the_relay() {
     assert_eq!(relay.go_live().unwrap_err().code(), "already_live");
     relay.set_delay_mode(false).unwrap();
     assert_eq!(relay.enable_delay(None).unwrap_err().code(), "delay_mode_off");
+    relay.set_delay_mode(true).unwrap();
     relay.set_delay(Duration::from_secs(5)).unwrap();
-    assert_eq!(relay.delay_config().buffer, Duration::from_secs(5), "buffer grows to fit the delay");
+    let cfg = relay.delay_config();
+    assert_eq!(
+        (cfg.buffer, cfg.retain()),
+        (Duration::from_secs(3), Duration::from_secs(5)),
+        "buffer kept fits the delay"
+    );
+    relay.set_delay(Duration::from_secs(2)).unwrap();
+    assert_eq!(relay.delay_config().retain(), Duration::from_secs(3), "and shrinks back with it");
     assert_eq!(relay.set_buffer(Duration::from_secs(1)).unwrap_err().code(), "invalid_value");
 }
 
