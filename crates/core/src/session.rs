@@ -754,6 +754,20 @@ async fn recover(
     None
 }
 
+/// Flush to the platform. Fails only when nothing at all goes out for
+/// [`UPSTREAM_STALL`]: a slow link is not a dead one.
+async fn flush_upstream(writer: &mut MsgWriter) -> Result<(), UpstreamError> {
+    loop {
+        let before = writer.bytes_sent();
+        match timeout(UPSTREAM_STALL, writer.flush()).await {
+            Ok(r) => return Ok(r?),
+            // The flush is cancel-safe: carry on where it stopped.
+            Err(_) if writer.bytes_sent() > before => continue,
+            Err(_) => return Err(UpstreamError::Timeout("sending to the platform")),
+        }
+    }
+}
+
 /// Run one upstream connection until it fails (`Err`) or everything has been sent (`Ok`).
 async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
     let stream_id = up.stream_id;
@@ -790,7 +804,6 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
         }
     };
 
-    let stalled = || UpstreamError::Timeout("sending to the platform");
     let write = async {
         let mut flushed = writer.bytes_sent();
         loop {
@@ -823,11 +836,11 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
                 Poll::Wait(t) => Some(Some(t)),
                 Poll::Idle => Some(None),
                 Poll::Finished => {
-                    timeout(UPSTREAM_STALL, writer.flush()).await.map_err(|_| stalled())??;
+                    flush_upstream(writer).await?;
                     return Ok(());
                 }
             };
-            timeout(UPSTREAM_STALL, writer.flush()).await.map_err(|_| stalled())??;
+            flush_upstream(writer).await?;
             sess.bytes_out.fetch_add(writer.bytes_sent() - flushed, Ordering::Relaxed);
             flushed = writer.bytes_sent();
             if let Some(deadline) = wait {

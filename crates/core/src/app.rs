@@ -86,6 +86,8 @@ pub struct DelayStatus {
     pub progress: Option<f32>,
     pub degraded: Option<String>,
     pub buffer_limit_ms: Option<u64>,
+    /// Content skipped because the upload was too slow, this stream.
+    pub skipped_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -241,6 +243,7 @@ fn delay_status(e: &EngineStatus, cfg: &DelayConfig) -> DelayStatus {
         progress: e.progress,
         degraded: e.degraded.clone(),
         buffer_limit_ms: e.buffer_limit_ms,
+        skipped_ms: e.skipped_ms,
     }
 }
 
@@ -494,6 +497,7 @@ impl App {
             progress: None,
             degraded: None,
             buffer_limit_ms: None,
+            skipped_ms: 0,
         };
         Status {
             version: env!("CARGO_PKG_VERSION"),
@@ -521,6 +525,10 @@ impl App {
         let info = s.info();
         let engine = s.engine().status(now, cfg.delay);
         let mut health = s.health();
+        if info.phase == Phase::Finishing {
+            // The encoder stopped on purpose: no keyframes are coming.
+            health.findings.retain(|f| f.code != "keyframes_missing");
+        }
         if info.phase == Phase::Live
             && let Some(f) = crate::health::upload_finding(engine.behind_ms, engine.skipping)
         {

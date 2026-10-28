@@ -50,7 +50,7 @@ pub const MAX_DELAY: Duration = Duration::from_secs(600);
 /// skips ahead to a keyframe instead of letting the delay grow.
 pub const MAX_BEHIND: Duration = Duration::from_secs(5);
 /// A skip counts as recent (reported in the status) for this long.
-const SKIP_RECENT: Duration = Duration::from_secs(30);
+const SKIP_RECENT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub enum Poll {
@@ -179,8 +179,10 @@ pub struct EngineStatus {
     pub buffer_limit_ms: Option<u64>,
     /// How far output is behind its schedule because sending is slower than the input.
     pub behind_ms: u64,
-    /// Content was skipped in the last 30 s to keep up with the input.
+    /// Content was skipped in the last 10 s to keep up with the input.
     pub skipping: bool,
+    /// Content skipped to keep up since the stream started.
+    pub skipped_ms: u64,
 }
 
 /// Result of a successful enable.
@@ -310,6 +312,7 @@ pub struct Engine {
     /// Last skip to keep up with the input, and content skipped not yet taken by [`Engine::take_skipped`].
     last_skip: Option<Instant>,
     skipped: Duration,
+    skipped_total: Duration,
 }
 
 impl Default for Engine {
@@ -356,6 +359,7 @@ impl Engine {
             retain,
             last_skip: None,
             skipped: Duration::ZERO,
+            skipped_total: Duration::ZERO,
         }
     }
 
@@ -686,7 +690,9 @@ impl Engine {
         let Some(k) = self.keys.iter().rev().copied().find(|&k| k > self.cursor && self.age(k, now) >= due) else {
             return false;
         };
-        self.skipped += self.age(self.cursor, now) - self.age(k, now);
+        let skip = self.age(self.cursor, now) - self.age(k, now);
+        self.skipped += skip;
+        self.skipped_total += skip;
         self.last_skip = Some(now);
         self.start_at(k);
         true
@@ -850,6 +856,7 @@ impl Engine {
             buffer_limit_ms: limit.map(ms),
             behind_ms: ms(behind),
             skipping: self.last_skip.is_some_and(|t| now.saturating_duration_since(t) < SKIP_RECENT),
+            skipped_ms: ms(self.skipped_total),
         }
     }
 }
@@ -934,6 +941,8 @@ pub(crate) mod tests {
         assert_eq!(e.take_skipped(), Duration::from_millis(7400), "from 0.6 s to the keyframe at 8 s");
         let s = e.status(at(18_000), Duration::ZERO);
         assert!(s.behind_ms < 1000 && s.skipping && s.state == DelayState::Delayed, "{s:?}");
+        assert_eq!(s.skipped_ms, 7400, "the total stays visible");
+        assert!(!e.status(at(28_001), Duration::ZERO).skipping, "the warning clears 10 s after the last skip");
 
         let mut done = Engine::default();
         for i in 0..100u32 {
