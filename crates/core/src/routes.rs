@@ -147,7 +147,17 @@ fn hidden_char(c: char) -> bool {
                 | '\u{2060}'..='\u{206F}'
                 | '\u{FEFF}'
                 | '\u{FFF9}'..='\u{FFFB}'
+                // blank-looking letters: Hangul fillers, braille blank
+                | '\u{115F}'..='\u{1160}'
+                | '\u{3164}'
+                | '\u{FFA0}'
+                | '\u{2800}'
         )
+}
+
+/// Combining marks, which draw on the character before them.
+fn combining(c: char) -> bool {
+    matches!(c, '\u{300}'..='\u{36F}' | '\u{1AB0}'..='\u{1AFF}' | '\u{1DC0}'..='\u{1DFF}' | '\u{20D0}'..='\u{20FF}' | '\u{FE20}'..='\u{FE2F}')
 }
 
 /// Check `route` against the rules and the other routes (excluding itself).
@@ -170,7 +180,7 @@ pub fn validate(route: &Route, others: &[Route]) -> Result<(), Problem> {
     if route.name.chars().count() > 64 {
         return Err(Problem::new("name_length", "The route name must be at most 64 characters."));
     }
-    if route.name.chars().any(hidden_char) {
+    if route.name.chars().any(hidden_char) || route.name.trim_start().starts_with(combining) {
         return Err(Problem::new("name_chars", "The route name contains control or invisible characters."));
     }
     if route.upstream.len() > 512 {
@@ -221,7 +231,17 @@ mod tests {
         assert!(validate(&named, &routes).is_ok());
         named.name.push('x');
         assert_eq!(validate(&named, &routes).unwrap_err().code, "name_length");
-        for bad in ["a\0b", "a\u{1b}[31m", "evil\u{202E}txt", "Twi\u{200B}tch", "a\u{200E}", "\u{FEFF}x"] {
+        for bad in [
+            "a\0b",
+            "a\u{1b}[31m",
+            "evil\u{202E}txt",
+            "Twi\u{200B}tch",
+            "a\u{200E}",
+            "\u{FEFF}x",
+            "\u{3164}",
+            "a\u{2800}b",
+            "\u{301}\u{301}",
+        ] {
             named.name = bad.into();
             assert_eq!(validate(&named, &routes).unwrap_err().code, "name_chars", "{bad:?}");
         }
