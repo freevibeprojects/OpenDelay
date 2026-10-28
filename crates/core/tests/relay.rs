@@ -266,7 +266,8 @@ async fn one_encoder_streams_to_several_platforms() {
 async fn delay_actions_through_the_relay() {
     let ingest = MockIngest::start(Behaviour::default()).await;
     let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
-    let opts = RelayOptions { delay, ..Default::default() };
+    let logs = std::env::temp_dir().join(format!("opendelay-logs-{}", opendelay_core::diag::short_id()));
+    let opts = RelayOptions { delay, log_dir: Some(logs.clone()), ..Default::default() };
     let (relay, addr) = relay_for(vec![route("t", format!("rtmp://{}/app", ingest.addr))], opts).await;
     assert_eq!(relay.enable_delay(None).unwrap_err().code(), "no_stream");
 
@@ -295,6 +296,10 @@ async fn delay_actions_through_the_relay() {
     let before = got[..replay].iter().rev().find_map(frame_no).unwrap();
     assert!(frame_no(key).unwrap() + 30 <= before, "replay jumps back at least 1 s");
     assert!(changes.has_changed().unwrap(), "the jump is pushed to status subscribers");
+    let log: String =
+        std::fs::read_dir(&logs).unwrap().flatten().map(|f| std::fs::read_to_string(f.path()).unwrap()).collect();
+    assert!(log.contains("Jumped at a keyframe: viewers are 1."), "the landing is logged: {log}");
+    let _ = std::fs::remove_dir_all(&logs);
     for t in [msg_type::AUDIO, msg_type::VIDEO] {
         let ts: Vec<u32> = got.iter().filter(|m| m.type_id == t).map(|m| m.timestamp).collect();
         assert!(ts.windows(2).all(|w| w[1] >= w[0]), "track {t} never decreases upstream");

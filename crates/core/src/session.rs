@@ -841,6 +841,8 @@ async fn pump(sess: &Session, up: &mut Upstream) -> Result<(), UpstreamError> {
                 Poll::ResetHeaders => {
                     // a jump: the delay viewers see changed
                     sess.changed();
+                    let behind = sess.engine().status(Instant::now(), Duration::ZERO).current_delay_ms;
+                    sess.log.event(format!("Jumped at a keyframe: viewers are {:.1} s behind", behind as f64 / 1000.0));
                     writer.reset_headers();
                     continue;
                 }
