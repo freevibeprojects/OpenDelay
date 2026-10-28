@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! HTTP API and controller WebSocket: token, cross-site rejection, protocol.
 
+mod common;
+
 use futures_util::{SinkExt, StreamExt};
 use opendelay_core::{App, AppOptions};
 use serde_json::{Value, json};
@@ -373,4 +375,31 @@ async fn show_window_request_and_security_headers() {
     assert!(!s.app.take_show_request(), "flag consumed");
     let head = http(&s, "GET", "/api/status", &[], "").await.head.to_ascii_lowercase();
     assert!(head.contains("x-content-type-options: nosniff") && head.contains("cache-control: no-store"));
+}
+
+#[tokio::test]
+async fn emergency_stop_reply_already_shows_the_stream_gone() {
+    let s = start().await;
+    let ingest = common::MockIngest::start(common::Behaviour::default()).await;
+    let route = opendelay_core::Route {
+        name: "Test".into(),
+        path: "test".into(),
+        upstream: format!("rtmp://{}/app", ingest.addr),
+        enabled: true,
+        ..Default::default()
+    };
+    s.app.add_route(route).unwrap();
+    let rtmp = s.app.start_rtmp(0).await.unwrap()[0];
+    let (mut enc, _) = common::Encoder::connect(rtmp, "test").await;
+    enc.publish("k").await;
+    for _ in 0..200 {
+        if s.app.status().connected {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(s.app.status().connected);
+    let reply = s.app.act(&opendelay_core::Action::EmergencyStop);
+    assert!(reply.success);
+    assert_eq!((reply.status.state, reply.status.connected), ("offline", false), "not the status from before");
 }

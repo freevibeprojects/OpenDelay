@@ -480,7 +480,8 @@ impl App {
         let now = Instant::now();
         let cfg = self.relay.delay_config();
         let settings = self.settings();
-        let sessions = self.relay.sessions();
+        // Cancelled streams (emergency stop, shutdown) are already on their way out.
+        let sessions: Vec<_> = self.relay.sessions().into_iter().filter(|s| !s.token.is_cancelled()).collect();
         let streams: Vec<StreamStatus> = sessions.iter().map(|s| self.stream_status(s, now, &cfg)).collect();
         let primary = streams.iter().find(|s| matches!(s.phase, "live" | "recovering")).or(streams.first());
         let state = match primary {
