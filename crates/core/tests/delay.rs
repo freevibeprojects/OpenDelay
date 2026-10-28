@@ -210,6 +210,9 @@ fn changing_delay_while_active() {
     sim.secs(140.0);
     // Longer: jumps back at the next keyframe that is 45 s old.
     sim.e.set_delay(Duration::from_secs(45), sim.at()).unwrap();
+    let st = sim.e.status(sim.at(), Duration::ZERO);
+    assert_eq!((st.state, st.target_delay_ms), (DelayState::Delayed, 45_000), "still delayed while switching");
+    assert!(st.current_delay_ms < 31_000, "{st:?}");
     sim.secs(142.0);
     let st = sim.e.status(sim.at(), Duration::ZERO);
     assert_eq!(st.state, DelayState::Delayed);
@@ -218,6 +221,9 @@ fn changing_delay_while_active() {
     assert!((45_200..=45_500).contains(&lag_ms(&sim)));
     // Shorter: jumps forward at the next keyframe that is 20 s old.
     sim.e.set_delay(Duration::from_secs(20), sim.at()).unwrap();
+    let st = sim.e.status(sim.at(), Duration::ZERO);
+    assert_eq!((st.state, st.target_delay_ms), (DelayState::Delayed, 20_000), "a shorter delay is not going live");
+    assert!(st.current_delay_ms > 45_000, "{st:?}");
     sim.secs(162.0);
     let st = sim.e.status(sim.at(), Duration::ZERO);
     assert_eq!(st.state, DelayState::Delayed);

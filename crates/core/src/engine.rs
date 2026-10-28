@@ -6,10 +6,11 @@
 //! Modes (SPEC §4):
 //! - **Live**: every message is sent as soon as it arrives.
 //! - **Delayed**: a message is sent `delay` after it arrived.
-//! - **Growing** ("buffering"): delayed less than requested because the buffer
-//!   does not reach back that far yet; jumps back again as soon as it does.
-//! - **Cutting** ("draining"): waiting for a keyframe to jump forward to a
-//!   shorter delay or to the live edge.
+//! - **Growing** ("buffering"; "delayed" once only a keyframe is awaited):
+//!   delayed less than requested because the buffer does not reach back that
+//!   far yet; jumps back again as soon as it does.
+//! - **Cutting** ("draining" towards live, "delayed" towards a shorter
+//!   delay): waiting for a keyframe to jump forward.
 //!
 //! Output never pauses: platforms drop an ingest that goes quiet (Twitch after
 //! 30 s), and viewers would see a frozen stream. Switching delay on jumps the
@@ -149,8 +150,10 @@ pub enum DelayState {
     Live,
     /// Delayed, but less than requested until the buffer reaches back far enough.
     Buffering,
+    /// Delayed; while switching to another delay, `target_delay_ms` differs from
+    /// `current_delay_ms` until a keyframe reaches it.
     Delayed,
-    /// Waiting for a keyframe to jump forward (to live or a shorter delay).
+    /// Waiting for a keyframe to jump forward to live.
     Draining,
 }
 
@@ -826,10 +829,17 @@ impl Engine {
         let (state, progress) = match self.mode {
             Mode::Live => (DelayState::Live, None),
             Mode::Delayed { .. } => (DelayState::Delayed, None),
-            Mode::Growing { target, .. } => {
+            Mode::Growing { delay, target } => {
                 let reach = max_delay.as_secs_f32() / (target + SAFETY_MARGIN).as_secs_f32();
-                (DelayState::Buffering, Some(reach.min(1.0)))
+                // Already delayed and buffered far enough: only the keyframe is awaited.
+                if !delay.is_zero() && reach >= 1.0 {
+                    (DelayState::Delayed, None)
+                } else {
+                    (DelayState::Buffering, Some(reach.min(1.0)))
+                }
             }
+            // A shorter delay is still a delay (not going live).
+            Mode::Cutting { target, .. } if !target.is_zero() => (DelayState::Delayed, None),
             Mode::Cutting { .. } => (DelayState::Draining, None),
         };
         let bps = self.bytes_per_sec();

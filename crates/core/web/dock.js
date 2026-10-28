@@ -39,7 +39,9 @@ function render(st, err) {
   const behind = OD.duration(Math.round(d.currentMs / 1000));
   const finishing = (st.streams || []).some((s) => s.phase === "finishing");
   $("caption").textContent = finishing ? OD.t("caption_finishing", behind)
-    : st.state === "buffering" ? OD.t("caption_buffering", `${Math.round((d.progress || 0) * 100)}%`)
+    : st.state === "buffering" ? OD.t(d.currentMs >= 500 ? "caption_buffering_delayed" : "caption_buffering", `${Math.round((d.progress || 0) * 100)}%`, behind)
+    : st.state === "delayed" && Math.round(d.targetMs / 1000) !== Math.round(d.currentMs / 1000)
+      ? OD.t("caption_switching", behind, OD.duration(Math.round(d.targetMs / 1000)))
     : OD.t("caption_" + st.state, behind);
   $("toggle").textContent = active ? OD.t("disable") : OD.t("enable");
   const hadFocus = document.activeElement === $("golive");

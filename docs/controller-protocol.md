@@ -185,11 +185,12 @@ All durations are milliseconds.
 }
 ```
 
-- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (waiting
-  for a keyframe that is as old as the requested delay; viewers keep seeing
-  what they saw before), `delayed`,
-  `draining` (waiting for a keyframe to go live or shorten the delay) or
-  `recovering` (platform connection lost, reconnecting).
+- `state`: `offline` (no encoder), `connecting`, `live`, `buffering` (the
+  buffer does not reach back as far as the requested delay yet; viewers keep
+  seeing what they saw before), `delayed` (while switching to another delay,
+  `delay.targetMs` differs from `delay.currentMs` until a keyframe reaches it),
+  `draining` (waiting for a keyframe to go live) or `recovering` (platform
+  connection lost, reconnecting).
 - `delay.currentMs` is how far behind the encoder the platform currently is;
   `delay.targetMs` is the delay being established (0 when live).
 - `delay.ready` tells whether enabling the configured delay would be instant.

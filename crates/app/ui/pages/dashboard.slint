@@ -213,7 +213,8 @@ export component DashboardPage {
                         : AppState.state == "recovering" ? @tr("Reconnecting to the platform (attempt {})…", AppState.recovery-attempt)
                         : AppState.state == "buffering" ? @tr("Viewers are {} behind; they jump back {} at a keyframe once that much is buffered.", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
                         : AppState.state == "draining" ? @tr("Switching at the next keyframe…")
-                        : AppState.state == "delayed" ? @tr("Viewers are {} behind (target {}).", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
+                        : AppState.state == "delayed" && AppState.current-delay-s != AppState.target-delay-s ? @tr("Viewers are {} behind. Switching to {} at the next keyframe…", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
+                        : AppState.state == "delayed" ? @tr("Viewers are {} behind.", Strings.duration(AppState.current-delay-s))
                         : AppState.ready ? @tr("Viewers see you live. The delay can start instantly.")
                         : @tr("Viewers see you live. The buffer is still filling; enabling now builds the delay up.");
                 }
