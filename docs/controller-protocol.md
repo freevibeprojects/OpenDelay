@@ -25,9 +25,11 @@ ws://127.0.0.1:3937/ws
   pages out, and any local program can already control local software.
 - Messages are UTF-8 JSON text frames, at most 64 KiB. A larger message up to
   1 MiB gets a `too_large` error reply and the connection stays open; beyond
-  1 MiB the connection closes (close code 1009). Binary frames get an error
-  reply.
-- No subprotocol is needed. Clients that must send one can use `opendelay`.
+  1 MiB the connection is dropped without a close frame. Binary frames get an
+  error reply.
+- No subprotocol is needed. A client that offers `opendelay` gets it echoed;
+  other offered subprotocols are not selected (browsers then fail the
+  connection), so offer `opendelay` or none.
 
 On connect the server sends:
 
@@ -100,6 +102,14 @@ names the cause (`go_live_first`, `buffer_below_delay`, `delay_range`,
 | `invalid_value` | A parameter is out of range. |
 | `bad_request` | Malformed JSON, missing `action` or invalid parameters. |
 | `unknown_action` | The `action` is not part of this protocol. |
+| `too_large` | The message or request body is over 64 KiB. |
+| `forbidden` | Wrong `Host`, cross-site `Origin`/`Sec-Fetch-Site`, or a missing or wrong HTTP token (HTTP 403). |
+| `not_found` | No such route, log or endpoint (HTTP 404). |
+| `update_check_off` | `GET /api/update` while "Check for updates" is off. |
+
+Clients should treat any other `code` as a failure with a readable `message`.
+`invalid_value` carries a `detail`: `delay_range`, `buffer_range` or
+`not_a_number`. Parameters of the wrong JSON type give `bad_request`.
 
 ## Status pushes
 
@@ -132,7 +142,9 @@ All durations are milliseconds.
     "ready": true,
     "maxDelayMs": 59800,
     "progress": null,
-    "degraded": null
+    "degraded": null,
+    "bufferLimitMs": null,
+    "skippedMs": 0
   },
   "health": {
     "codec": "H.264",
@@ -183,12 +195,24 @@ All durations are milliseconds.
 - `delay.ready` tells whether enabling the configured delay would be instant.
 - `delay.progress` (0–1) is set while buffering: how far back the buffer
   reaches towards the requested delay.
+- `delay.degraded` is a message and `delay.bufferLimitMs` the buffer length that
+  fits in memory, when the bitrate makes the buffer target unsustainable.
+- `delay.skippedMs`: content skipped this stream because the upload was
+  slower than the stream (see `upload_slow`).
+- `streams[].phase`: `connecting`, `live`, `recovering` (platform connection
+  lost, reconnecting) or `finishing` (the encoder stopped; the buffered tail is
+  still being sent).
+- `health` is `null` while offline; `keyframeIntervalMs`, `codec`, `width`
+  and `height` are `null` until measured (always for audio-only streams).
 - `health.findings` lists problems with the encoder settings, each with a
   `code` (`codec`, `keyframe_interval`, `keyframes_missing`, `b_frames`,
   `timestamps`, `slow_start`, `resolution`, `no_video`, `no_audio`,
   `bitrate_low`, `bitrate_high`, `upload_slow`), a `severity` (`low`, `medium`,
   `high`), a `confidence` (0–1), the observed `value`, the `limit` it was
-  compared with and an English `message`.
+  compared with and an English `message`. `value` and `limit` are display
+  strings (e.g. `"4.0 s"`, `"220 kbit/s"`), empty when there is nothing to
+  show. `bitrate_high` exists only for routes with the `twitch` (8500 kbit/s)
+  or `kick` (8000 kbit/s) preset; bitrates count video and audio.
 - With several routes live, `streams` lists each one and the top-level fields
   describe the first.
 
@@ -199,7 +223,11 @@ Newer versions may add fields; clients must ignore unknown ones.
 The same actions are available over HTTP for scripts and the OBS dock:
 
 - `GET /api/status` — `{ "success": true, "message": "", "code": null, "status": {...} }`
-- `POST /api/action` with a request body like the WebSocket request above.
+- `POST /api/action` with a request body like the WebSocket request above,
+  including `getStatus`; the reply is the WebSocket reply without `type`
+  (`id` is echoed when sent). `subscribe` has no effect over HTTP.
+  Malformed requests and unknown actions are HTTP 400, other replies 200 with
+  `success` telling the outcome.
 - `GET /api/routes`, `POST /api/routes`, `PUT|DELETE /api/routes/{id}` — routes. A route
   with `source` (another route's id) sends that route's encoder stream with its
   own `key` (multistream). The key is write-only: responses always carry
@@ -212,6 +240,10 @@ The same actions are available over HTTP for scripts and the OBS dock:
   code `update_check_off` unless "Check for updates" is on.
 - `POST /api/window/show` — bring the desktop window forward (used when
   OpenDelay is started a second time).
+
+Errors from the other endpoints are JSON with `success: false`, `code` and
+`message`: HTTP 400 for invalid input, 404 `not_found`, 405 for a wrong method,
+403 `forbidden`, 413 `too_large`.
 
 State-changing HTTP requests (`POST`, `PUT`, `DELETE`) need the header
 `X-OpenDelay-Token`, whose per-run value is only available inside pages served

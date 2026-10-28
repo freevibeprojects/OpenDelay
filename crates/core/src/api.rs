@@ -93,7 +93,10 @@ fn router(app: Arc<App>) -> Router {
         )
         .route("/api/diagnostics/{id}", get(diagnostic))
         .route("/ws", get(ws))
-        .fallback(|| async { (StatusCode::NOT_FOUND, "Not found") })
+        .fallback(|| async { json_error(StatusCode::NOT_FOUND, "not_found", "No such endpoint.") })
+        .method_not_allowed_fallback(|| async {
+            json_error(StatusCode::METHOD_NOT_ALLOWED, "bad_request", "This endpoint does not take that method.")
+        })
         .layer(middleware::from_fn_with_state(app.clone(), guard))
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY))
         .with_state(app)
@@ -201,18 +204,34 @@ fn respond(app: &App, result: Result<String, Problem>, data: Value) -> Response 
     if !data.is_null() {
         v["data"] = data;
     }
-    (if ok { StatusCode::OK } else { StatusCode::BAD_REQUEST }, Json(v)).into_response()
+    let status = match v["code"].as_str() {
+        _ if ok => StatusCode::OK,
+        Some("not_found") => StatusCode::NOT_FOUND,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (status, Json(v)).into_response()
 }
 
 fn parse<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, Problem> {
     serde_json::from_slice(body).map_err(|e| Problem::new("bad_request", format!("Invalid request body: {e}")))
 }
 
+/// The WebSocket actions over HTTP: same replies, codes and `id` echo.
 async fn action(State(app): AppState, body: Bytes) -> Response {
-    match parse::<Action>(&body) {
-        Ok(a) => Json(app.act(&a)).into_response(),
-        Err(e) => respond(&app, Err(e), Value::Null),
+    let mut v = handle_ws_text(&app, &String::from_utf8_lossy(&body), &mut false);
+    let bad = matches!(v["code"].as_str(), Some("bad_request" | "unknown_action"));
+    if let Some(o) = v.as_object_mut() {
+        o.remove("type");
+        if o.get("id").is_some_and(Value::is_null) {
+            o.remove("id");
+        }
     }
+    (if bad { StatusCode::BAD_REQUEST } else { StatusCode::OK }, Json(v)).into_response()
+}
+
+/// Error envelope for requests that never reach an endpoint.
+fn json_error(status: StatusCode, code: &str, message: &str) -> Response {
+    (status, Json(json!({ "success": false, "code": code, "message": message }))).into_response()
 }
 
 /// Routes as the API shows them: stored stream keys never leave the app.
@@ -332,7 +351,7 @@ async fn diagnostic(State(app): AppState, Path(id): Path<String>) -> Response {
             text,
         )
             .into_response(),
-        None => (StatusCode::NOT_FOUND, "No such log").into_response(),
+        None => json_error(StatusCode::NOT_FOUND, "not_found", "No such log."),
     }
 }
 

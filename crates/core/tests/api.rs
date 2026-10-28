@@ -111,6 +111,19 @@ async fn state_changes_need_the_token() {
     // Other state-changing methods too.
     assert_eq!(http(&s, "DELETE", "/api/routes/x", &[], "").await.code, 403);
     assert_eq!(http(&s, "PUT", "/api/network", &[], r#"{"listenerMode":"lan"}"#).await.code, 403);
+    // Same actions, codes and id echo as the WebSocket.
+    let r = post(&s, "/api/action", r#"{"id":7,"action":"getStatus"}"#, &[]).await;
+    assert_eq!((r.code, r.json()["id"].as_u64(), r.json()["success"].as_bool()), (200, Some(7), Some(true)));
+    let r = post(&s, "/api/action", r#"{"action":"teleport"}"#, &[]).await;
+    assert_eq!((r.code, r.json()["code"].as_str()), (400, Some("unknown_action")));
+    let r = post(&s, "/api/action", r#"{"action":"setDelay","seconds":-1}"#, &[]).await;
+    assert_eq!(r.json()["detail"], "delay_range");
+    for (method, path, code) in [("GET", "/api/nope", 404), ("GET", "/api/routes/zzz", 405)] {
+        let r = http(&s, method, path, &[], "").await;
+        assert_eq!((r.code, r.json()["success"].as_bool()), (code, Some(false)), "{method} {path}");
+    }
+    let tok = [("X-OpenDelay-Token", s.app.token())];
+    assert_eq!(http(&s, "DELETE", "/api/routes/zzz", &tok, "").await.code, 404);
     let r = post(&s, "/api/action", &" ".repeat(70_000), &[]).await;
     assert_eq!((r.code, r.json()["code"].as_str()), (413, Some("too_large")));
 }

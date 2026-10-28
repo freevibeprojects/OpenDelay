@@ -213,9 +213,14 @@ fn random_token() -> String {
 }
 
 fn seconds(s: f64, min: Duration, max: Duration) -> Result<Duration, Refusal> {
-    let d = Duration::try_from_secs_f64(s).map_err(|_| Refusal::InvalidValue("not_a_number"))?;
+    let range = Refusal::InvalidValue(if min == MIN_BUFFER { "buffer_range" } else { "delay_range" });
+    if s.is_nan() {
+        return Err(Refusal::InvalidValue("not_a_number"));
+    }
+    // Negative and huge numbers are numbers, just out of range.
+    let d = Duration::try_from_secs_f64(s).map_err(|_| range)?;
     if d < min || d > max {
-        return Err(Refusal::InvalidValue(if min == MIN_BUFFER { "buffer_range" } else { "delay_range" }));
+        return Err(range);
     }
     Ok(d)
 }
