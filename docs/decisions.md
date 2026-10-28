@@ -102,9 +102,11 @@ Each entry: the decision, then why.
   second time later; viewers saw two repeats.
 - **"Buffer not ready"** is returned only when nothing usable has been
   buffered yet (no keyframe received), since growing handles every other case.
-- **Requested delay longer than the buffer**: the buffer grows to the delay
-  (also persisted as the new buffer setting) and the message says the delay
-  starts once the buffer has filled.
+- **Requested delay longer than the buffer**: the buffer kept grows to the
+  delay and the message says the delay starts once the buffer has filled. The
+  buffer setting stays what the user chose, so the buffer shrinks back when
+  the delay is shortened (a single long delay used to keep its memory for
+  the rest of the session).
 - **Changing the delay while active**: longer jumps back, shorter jumps
   forward, each when a keyframe reaches the new value (as above);
   differences under 0.5 s only retarget.
