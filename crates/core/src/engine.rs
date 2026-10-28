@@ -450,8 +450,8 @@ impl Engine {
 
     /// This engine's encoder was replaced by a new connection from the same
     /// machine, which feeds it from now on: the content not sent yet goes out
-    /// first on the new upstream connection, then the new encoder's stream
-    /// on the same timeline. Returns the length of that unsent content.
+    /// first, then the new encoder's stream on the same timeline. Returns the
+    /// length of that unsent content.
     pub fn continue_with_new_encoder(&mut self) -> Duration {
         let unsent = match (self.entry(self.cursor), self.entries.back()) {
             (Some(a), Some(b)) => b.at.duration_since(a.at),
@@ -461,6 +461,12 @@ impl Engine {
         self.ts_base = self.entries.iter().map(|e| e.ts).max().map_or(0, |m| m + self.frame_ms);
         self.clocks = [Unwrap::default(); 3];
         self.last_video_ts = None;
+        unsent
+    }
+
+    /// [`Engine::upstream_reset`] for a continued engine whose platform
+    /// connection could not be kept.
+    pub fn restart_on_new_upstream(&mut self) {
         self.upstream_reset();
         // Restart now, while the configuration cached is still the one the
         // unsent content was encoded with (the new encoder may change it).
@@ -468,7 +474,6 @@ impl Engine {
             self.resync = false;
             self.start_at(k);
         }
-        unsent
     }
 
     pub fn is_active(&self) -> bool {

@@ -4,7 +4,7 @@
 
 use crate::engine::{self, Enabled, Engine, Refusal};
 use crate::routes::{Route, normalize_path};
-use crate::session::{self, Phase, Session};
+use crate::session::{self, Handover, Phase, Session};
 use crate::upstream;
 use std::collections::HashMap;
 use std::io;
@@ -140,7 +140,7 @@ pub(crate) struct Shared {
     kept_delays: Mutex<HashMap<String, (Duration, Instant)>>,
     /// Per route path: the buffer of a delayed session that a reconnecting
     /// encoder replaced, for the new session to continue.
-    handovers: Mutex<HashMap<String, Engine>>,
+    handovers: Mutex<HashMap<String, Handover>>,
 }
 
 /// How long a reconnecting encoder still gets the delay its route ended with.
@@ -249,22 +249,49 @@ impl Shared {
         self.lock_sessions().retain(|s| s.id != id);
     }
 
-    /// Before a new publish on `route`: stop the sessions the same machine left
-    /// on that route and the routes sending its stream (an encoder
-    /// reconnecting) and wait (≤ 3 s) for them to end. Another machine cannot
-    /// take over a route that is publishing; sessions still negotiating do not
-    /// block anyone (see `claim_route`).
-    pub async fn replace_route_sessions(&self, route: &Route, peer: IpAddr) -> Result<(), String> {
-        let on_route: Vec<Arc<Session>> = self
-            .lock_sessions()
+    fn on_route(&self, route: &Route) -> Vec<Arc<Session>> {
+        let path = normalize_path(&route.path);
+        let sessions = self.lock_sessions();
+        sessions
             .iter()
-            .filter(|s| normalize_path(&s.route.path) == normalize_path(&route.path) || s.route.source == route.id)
+            .filter(|s| normalize_path(&s.route.path) == path || s.route.source == route.id)
             .cloned()
-            .collect();
+            .collect()
+    }
+
+    /// At `connect`: another machine cannot take over a route that is publishing.
+    pub fn check_other_machines(&self, route: &Route, peer: IpAddr) -> Result<(), String> {
+        if self.on_route(route).iter().any(|s| s.peer.ip() != peer && s.is_claimed()) {
+            return Err("This route is already receiving a stream from another computer.".into());
+        }
+        Ok(())
+    }
+
+    /// Whether `peer` is publishing on `route` (an encoder reconnecting finds its old session).
+    pub fn has_own_stream(&self, route: &Route, peer: IpAddr) -> bool {
+        self.on_route(route).iter().any(|s| s.peer.ip() == peer && s.is_claimed() && s.route.source.is_empty())
+    }
+
+    /// At `publish` with `key`: stop the session the same machine has
+    /// publishing on `route` with that key, and the routes sending its stream
+    /// (an encoder reconnecting), and wait (≤ 3 s) for them to end. A session
+    /// publishing another key is not replaced: a connection that only knows
+    /// the route cannot end the stream. Sessions still negotiating are left
+    /// alone (see `claim_route`).
+    pub async fn replace_route_sessions(&self, route: &Route, peer: IpAddr, key: &str) -> Result<(), String> {
+        let on_route = self.on_route(route);
         if on_route.iter().any(|s| s.peer.ip() != peer && s.is_claimed()) {
             return Err("This route is already receiving a stream from another computer.".into());
         }
-        let old: Vec<Arc<Session>> = on_route.into_iter().filter(|s| s.peer.ip() == peer).collect();
+        let old: Vec<Arc<Session>> = on_route.into_iter().filter(|s| s.peer.ip() == peer && s.is_claimed()).collect();
+        let same_key = |s: &Session| {
+            s.publish_key.get().is_some_and(|k| crate::api::constant_time_eq(k.as_bytes(), key.as_bytes()))
+        };
+        if old.iter().any(|s| s.route.source.is_empty() && !same_key(s)) {
+            return Err("This route is still sending a stream with another stream key. Stop that stream first, \
+                        or wait until it has finished."
+                .into());
+        }
         for s in &old {
             s.log.event("Replaced by a new encoder connection on the same route");
             s.replaced.store(true, Ordering::SeqCst);
@@ -281,22 +308,24 @@ impl Shared {
     }
 
     /// A session ending: when a reconnecting encoder replaced it with the
-    /// delay on, keep its buffer for the new session ([`Shared::take_handover`]).
+    /// delay on, keep its buffer and platform connection for the new session
+    /// ([`Shared::take_handover`]).
     pub(crate) fn end_session(&self, sess: &Session) {
         let mut engine = sess.engine();
         if sess.replaced.load(Ordering::SeqCst) && engine.is_active() {
             let engine = std::mem::take(&mut *engine);
-            self.lock_handovers().insert(normalize_path(&sess.route.path), engine);
+            let upstream = sess.kept_upstream.lock().unwrap_or_else(|e| e.into_inner()).take();
+            self.lock_handovers().insert(normalize_path(&sess.route.path), Handover { engine, upstream });
         } else if sess.route.source.is_empty() {
             self.remember_delay(&sess.route, engine.target_delay());
         }
     }
 
-    pub(crate) fn take_handover(&self, route: &Route) -> Option<Engine> {
+    pub(crate) fn take_handover(&self, route: &Route) -> Option<Handover> {
         self.lock_handovers().remove(&normalize_path(&route.path))
     }
 
-    fn lock_handovers(&self) -> std::sync::MutexGuard<'_, HashMap<String, Engine>> {
+    fn lock_handovers(&self) -> std::sync::MutexGuard<'_, HashMap<String, Handover>> {
         self.handovers.lock().unwrap_or_else(|e| e.into_inner())
     }
 

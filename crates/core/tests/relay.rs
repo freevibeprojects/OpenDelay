@@ -574,4 +574,36 @@ async fn an_encoder_reconnecting_while_delayed_stays_delayed() {
     assert_eq!(old, (0..90).collect::<Vec<_>>(), "every frame of the old connection reached the platform");
     let ts: Vec<u32> = twitch.media(c).iter().filter(|m| frame_no(m).is_some()).map(|m| m.timestamp).collect();
     assert!(ts.windows(2).all(|w| w[1] >= w[0]), "one timeline across both encoder connections");
+    let publishes = twitch.seen().iter().filter(|s| matches!(s, Seen::Publish { .. })).count();
+    assert_eq!(publishes, 1, "the platform connection was kept: no reconnect seen by viewers");
+}
+
+#[tokio::test]
+async fn a_connection_without_the_stream_key_cannot_end_the_stream() {
+    let twitch = MockIngest::start(Behaviour::default()).await;
+    let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
+    let (relay, addr) = relay_for(
+        vec![route("t", format!("rtmp://{}/app", twitch.addr))],
+        RelayOptions { delay, ..Default::default() },
+    )
+    .await;
+    let stream = synthetic_stream(60, 15);
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+    enc.send_paced(&stream, tokio::time::Instant::now(), 0).await;
+    let victim = relay.sessions()[0].id;
+
+    // Connect only, from the same machine and any spelling of the path.
+    let (probe, _) = Encoder::connect(addr, "/T/").await;
+    drop(probe);
+    // Publish with another key.
+    let (mut other, _) = Encoder::connect(addr, "t").await;
+    let status = other.publish("guess").await;
+    assert_eq!(status.get("code").and_then(Amf0::as_str), Some("NetStream.Publish.Denied"));
+    drop(other);
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let streaming: Vec<u64> = relay.sessions().iter().filter(|s| s.is_claimed()).map(|s| s.id).collect();
+    assert_eq!(streaming, [victim], "the stream goes on untouched");
+    enc.send(&stream[..10]).await; // the encoder connection is still open
 }

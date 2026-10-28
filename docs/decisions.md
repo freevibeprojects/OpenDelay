@@ -57,11 +57,17 @@ Each entry: the decision, then why.
   stalled. `currentMs` includes the lag, and an `upload_slow` finding shows
   while it is behind or skipped in the last 30 s.
 - **Encoder stops while content is still buffered** (delay active): the relay
-  keeps sending the buffered tail at its normal pace, then unpublishes. A new
-  encoder connection from the same machine replaces the old session and, with
-  the delay on, continues its buffer: the tail not sent yet goes out first on
-  the new upstream connection, then the new stream on the same timeline, so
-  viewers lose nothing. The platform still sees one reconnect.
+  keeps sending the buffered tail at its normal pace, then unpublishes.
+- **An encoder reconnecting continues the old session.** A new connection from
+  the same machine replaces the session on its route only when it publishes
+  with the same stream key; until then it is answered locally and touches
+  nothing, so a program that merely connects (or guesses a key) cannot end
+  the stream. A different key is refused while the old session still sends.
+  With the delay on, the new session continues the old buffer and platform
+  connection: the unsent tail goes out first, then the new stream on the
+  same timeline, and the platform sees no reconnect. If the platform
+  connection was lost meanwhile, a new one is opened and the buffer resumes
+  from a keyframe.
 - **An encoder reconnecting keeps the delay.** When a route's session ends
   with the delay on (OBS crash, network blip, restart), an encoder publishing
   on that route within 10 minutes starts already delayed by the same amount:

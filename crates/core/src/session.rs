@@ -38,6 +38,21 @@ pub const MAX_RECOVERY_ATTEMPTS: u32 = 8;
 /// Encoder-facing stream id returned by our `createStream`.
 const ENCODER_STREAM_ID: u32 = 1;
 
+/// A live platform connection a replaced session leaves for its successor.
+pub(crate) struct KeptUpstream {
+    up: Upstream,
+    /// Stream key it publishes with.
+    key: String,
+    /// Route server URL it was opened for.
+    upstream_url: String,
+}
+
+/// What a replaced delayed session hands to the new connection on its route.
+pub(crate) struct Handover {
+    pub(crate) engine: Engine,
+    pub(crate) upstream: Option<KeptUpstream>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     /// Publish negotiation with the upstream in progress.
@@ -76,6 +91,10 @@ pub struct Session {
     claimed: AtomicBool,
     /// Set when a new encoder connection from the same machine replaces this session.
     pub(crate) replaced: AtomicBool,
+    /// Set when replaced: the platform connection, still publishing.
+    pub(crate) kept_upstream: Mutex<Option<KeptUpstream>>,
+    /// Stream key from the encoder's `publish`.
+    pub(crate) publish_key: std::sync::OnceLock<String>,
 }
 
 struct Health {
@@ -199,28 +218,15 @@ pub(crate) async fn run(relay: Arc<Shared>, tcp: TcpStream, peer: SocketAddr, id
             return;
         }
     };
-    // The same machine reconnecting replaces its stale session; another
-    // machine cannot take over a route that is streaming.
-    if let Err(reason) = relay.replace_route_sessions(&route, peer.ip()).await {
+    // Another machine cannot take over a route that is streaming. The same
+    // machine reconnecting replaces its session only at `publish`, with the
+    // same stream key (see `serve`).
+    if let Err(reason) = relay.check_other_machines(&route, peer.ip()) {
         let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
         return;
     }
 
-    let kept_delay = relay.kept_delay(&route);
     let sess = new_session(&relay, id, route, peer);
-    if let Some(engine) = relay.take_handover(&sess.route) {
-        let mut e = sess.engine();
-        *e = engine;
-        let unsent = e.continue_with_new_encoder();
-        sess.log.event(format!(
-            "Continuing the previous connection's delayed stream: {:.1} s not sent yet go out first",
-            unsent.as_secs_f64()
-        ));
-    } else if let Some(d) = kept_delay {
-        sess.engine().start_delayed(d);
-        sess.log
-            .event(format!("Delay kept from the previous connection: viewers see this stream {} s later", d.as_secs()));
-    }
     if let Err(reason) = relay.add_session(sess.clone()) {
         let _ = ew.send(&error_reply(connect.transaction_id, "NetConnection.Connect.Rejected", &reason)).await;
         sess.log.event(format!("Refused: {reason}"));
@@ -277,7 +283,29 @@ fn new_session(relay: &Shared, id: u64, route: Route, peer: SocketAddr) -> Arc<S
         }),
         claimed: AtomicBool::new(false),
         replaced: AtomicBool::new(false),
+        kept_upstream: Mutex::new(None),
+        publish_key: std::sync::OnceLock::new(),
     })
+}
+
+/// Continue a replaced session's buffer in `sess`. Returns its platform
+/// connection when it can be kept: same server URL and, when `key` is
+/// given, the same stream key; otherwise the buffer restarts on a new one.
+fn take_over(sess: &Session, h: Handover, key: Option<&str>) -> Option<KeptUpstream> {
+    let kept = h.upstream.filter(|k| k.upstream_url == sess.route.upstream && key.is_none_or(|key| key == k.key));
+    let mut e = sess.engine();
+    *e = h.engine;
+    let unsent = e.continue_with_new_encoder();
+    if kept.is_none() {
+        e.restart_on_new_upstream();
+    }
+    drop(e);
+    sess.log.event(format!(
+        "Continuing the previous connection's delayed stream: {:.1} s not sent yet go out first{}",
+        unsent.as_secs_f64(),
+        if kept.is_some() { ", on the same platform connection" } else { "" }
+    ));
+    kept
 }
 
 /// Sessions for the routes that also send `sess`'s stream (multistream),
@@ -287,10 +315,9 @@ fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) ->
     for route in relay.mirrors_of(&sess.route.id) {
         let m = new_session(relay, relay.next_id(), route, sess.peer);
         m.log.set_secret(&m.route.key);
-        if let Some(engine) = relay.take_handover(&m.route) {
-            let mut e = m.engine();
-            *e = engine;
-            e.continue_with_new_encoder();
+        let mut kept = None;
+        if let Some(h) = relay.take_handover(&m.route) {
+            kept = take_over(&m, h, Some(&m.route.key));
         } else {
             // No platform less delayed than the others: start as far behind as the source.
             let source_delay = sess.engine().target_delay();
@@ -303,7 +330,7 @@ fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) ->
             continue;
         }
         sess.log.event(format!("Also sending to route \"{}\"", m.route.name));
-        tokio::spawn(run_mirror(m.clone(), relay.clone(), encoder_connect.clone()));
+        tokio::spawn(run_mirror(m.clone(), relay.clone(), encoder_connect.clone(), kept));
         started.push(m);
     }
     started
@@ -311,15 +338,19 @@ fn start_mirrors(sess: &Session, relay: &Arc<Shared>, encoder_connect: &Amf0) ->
 
 /// A route sending another route's stream: its own platform connection and
 /// stream key, fed by that route's encoder until the encoder stops.
-async fn run_mirror(sess: Arc<Session>, relay: Arc<Shared>, encoder_connect: Amf0) {
+async fn run_mirror(sess: Arc<Session>, relay: Arc<Shared>, encoder_connect: Amf0, kept: Option<KeptUpstream>) {
     let key = sess.route.key.clone();
     match UpstreamUrl::parse(&sess.route.upstream) {
         Ok(url) => {
             let connect_obj = upstream::connect_object(&encoder_connect, &url);
-            sess.log.event(format!("Connecting to upstream {}:{}", url.host, url.port));
-            let opened = tokio::select! {
-                r = Upstream::open(&url, &connect_obj, &key, &relay.tls) => Some(r),
-                _ = sess.token.cancelled() => None,
+            let opened = if let Some(k) = kept {
+                Some(Ok(k.up))
+            } else {
+                sess.log.event(format!("Connecting to upstream {}:{}", url.host, url.port));
+                tokio::select! {
+                    r = Upstream::open(&url, &connect_obj, &key, &relay.tls) => Some(r),
+                    _ = sess.token.cancelled() => None,
+                }
             };
             let up = match opened {
                 Some(Ok(up)) => Some(up),
@@ -388,35 +419,39 @@ async fn serve(
 
     let url = UpstreamUrl::parse(&sess.route.upstream).map_err(|e| e.to_string())?;
     let connect_obj = upstream::connect_object(&connect.object, &url);
-    sess.log.event(format!(
-        "Connecting to upstream {}:{} ({})",
-        url.host,
-        url.port,
-        if url.tls { "rtmps" } else { "rtmp" }
-    ));
-    let connected = tokio::select! {
-        r = Upstream::connect(&url, &connect_obj, tls) => r,
-        _ = sess.token.cancelled() => return Err("stopped".into()),
-    };
-    let (mut up, result) = match connected {
-        Ok(v) => v,
-        Err(e) => {
-            let (code, desc) = match &e {
-                UpstreamError::Rejected(c, d) => (c.clone(), d.clone()),
-                _ => ("NetConnection.Connect.Failed".into(), format!("OpenDelay could not reach {}: {e}", url.host)),
-            };
-            let _ = ew.send(&error_reply(connect.transaction_id, &code, &desc)).await;
-            return Err(format!("upstream connect failed: {e}"));
+    let mut fresh = None;
+    let answer = if relay.has_own_stream(&sess.route, sess.peer.ip()) {
+        // Probably this machine's encoder reconnecting: its platform
+        // connection may go on, so answer locally and decide at `publish`.
+        let props = Amf0::Object(vec![
+            ("fmsVer".into(), Amf0::str("FMS/3,0,1,123")),
+            ("capabilities".into(), Amf0::Number(31.0)),
+        ]);
+        let info = status_object("status", "NetConnection.Connect.Success", "Connection succeeded.");
+        reply("_result", connect.transaction_id, props, vec![info])
+    } else {
+        match connect_upstream(sess, &url, &connect_obj, tls).await {
+            Ok((up, result)) => {
+                fresh = Some(up);
+                // Relay the platform's answer so the encoder sees a normal session.
+                reply("_result", connect.transaction_id, result.object, result.args)
+            }
+            Err(e) => {
+                let (code, desc) = match &e {
+                    UpstreamError::Rejected(c, d) => (c.clone(), d.clone()),
+                    _ => {
+                        ("NetConnection.Connect.Failed".into(), format!("OpenDelay could not reach {}: {e}", url.host))
+                    }
+                };
+                let _ = ew.send(&error_reply(connect.transaction_id, &code, &desc)).await;
+                return Err(format!("upstream connect failed: {e}"));
+            }
         }
     };
-    // Relay the platform's answer so the encoder sees a normal session.
     // Writes before `publish` share its deadline too (a peer that never reads
     // would otherwise stall them).
     let late = |_| "encoder did not publish in time".to_owned();
-    timeout_at(deadline, ew.send(&reply("_result", connect.transaction_id, result.object, result.args)))
-        .await
-        .map_err(late)?
-        .map_err(io_err)?;
+    timeout_at(deadline, ew.send(&answer)).await.map_err(late)?.map_err(io_err)?;
 
     // Answer the stream setup locally until `publish` carries the stream key.
     let key = loop {
@@ -459,16 +494,55 @@ async fn serve(
         timeout_at(deadline, ew.flush()).await.map_err(late)?.map_err(io_err)?;
     };
 
-    // Take the route only now: a peer that never publishes blocks no one, and
-    // an emergency stop pressed meanwhile still wins.
-    if let Err(reason) = relay.claim_route(sess) {
-        let status = status_object("error", "NetStream.Publish.Denied", &reason);
-        let _ = ew.send(&Command::new("onStatus", 0.0, Amf0::Null, vec![status]).to_message(ENCODER_STREAM_ID)).await;
+    // Replace and take the route only now: a peer that never publishes (or
+    // publishes another key) cannot end this machine's stream, and an
+    // emergency stop pressed meanwhile still wins.
+    let denied = |reason: &str| {
+        let status = status_object("error", "NetStream.Publish.Denied", reason);
+        Command::new("onStatus", 0.0, Amf0::Null, vec![status]).to_message(ENCODER_STREAM_ID)
+    };
+    let _ = sess.publish_key.set(key.clone());
+    if let Err(reason) = relay.replace_route_sessions(&sess.route, sess.peer.ip(), &key).await {
+        let _ = ew.send(&denied(&reason)).await;
         return Err(reason);
     }
-    let published = tokio::select! {
-        r = up.publish(&key) => r,
-        _ = sess.token.cancelled() => return Err("stopped".into()),
+    let mut kept = None;
+    if let Some(h) = relay.take_handover(&sess.route) {
+        kept = take_over(sess, h, Some(&key));
+    } else if let Some(d) = relay.kept_delay(&sess.route) {
+        sess.engine().start_delayed(d);
+        sess.log
+            .event(format!("Delay kept from the previous connection: viewers see this stream {} s later", d.as_secs()));
+    }
+    if let Err(reason) = relay.claim_route(sess) {
+        let _ = ew.send(&denied(&reason)).await;
+        return Err(reason);
+    }
+    let (up, published) = match kept {
+        Some(k) => {
+            sess.log.event("Continuing on the previous platform connection");
+            (k.up, Ok(status_object("status", "NetStream.Publish.Start", "Publishing.")))
+        }
+        None => {
+            let mut up = match fresh.take() {
+                Some(up) => up,
+                None => match connect_upstream(sess, &url, &connect_obj, tls).await {
+                    Ok((up, _)) => up,
+                    Err(e) => {
+                        let desc = format!("OpenDelay could not reach {}: {e}", url.host);
+                        let status = status_object("error", "NetStream.Publish.Failed", &desc);
+                        let msg = Command::new("onStatus", 0.0, Amf0::Null, vec![status]).to_message(ENCODER_STREAM_ID);
+                        let _ = ew.send(&msg).await;
+                        return Err(format!("upstream connect failed: {e}"));
+                    }
+                },
+            };
+            let published = tokio::select! {
+                r = up.publish(&key) => r,
+                _ = sess.token.cancelled() => return Err("stopped".into()),
+            };
+            (up, published)
+        }
     };
     match published {
         Ok(info) => {
@@ -510,6 +584,25 @@ async fn serve(
     }
     let _ = upstream_task.await;
     ended
+}
+
+/// TCP (+TLS), handshake and `connect` to the route's platform, unless the session is stopped.
+async fn connect_upstream(
+    sess: &Session,
+    url: &UpstreamUrl,
+    connect_obj: &Amf0,
+    tls: &Arc<ClientConfig>,
+) -> Result<(Upstream, Command), UpstreamError> {
+    sess.log.event(format!(
+        "Connecting to upstream {}:{} ({})",
+        url.host,
+        url.port,
+        if url.tls { "rtmps" } else { "rtmp" }
+    ));
+    tokio::select! {
+        r = Upstream::connect(url, connect_obj, tls) => r,
+        _ = sess.token.cancelled() => Err(UpstreamError::Protocol("stopped".into())),
+    }
 }
 
 /// Write to a publishing encoder; one that stops reading is dropped instead
@@ -595,6 +688,12 @@ async fn upstream_loop(
             Err(e) => e,
         };
         if sess.token.is_cancelled() {
+            if sess.replaced.load(Ordering::SeqCst) {
+                // The encoder reconnected: its new session continues on this connection.
+                let upstream_url = sess.route.upstream.clone();
+                *sess.kept_upstream.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(KeptUpstream { up, key, upstream_url });
+            }
             return;
         }
         sess.log.event(format!("Upstream connection lost: {err}"));
@@ -777,5 +876,7 @@ pub(crate) fn test_session(id: u64, path: &str, ip: [u8; 4]) -> Arc<Session> {
         }),
         claimed: AtomicBool::new(false),
         replaced: AtomicBool::new(false),
+        kept_upstream: Mutex::new(None),
+        publish_key: std::sync::OnceLock::new(),
     })
 }

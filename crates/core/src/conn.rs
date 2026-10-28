@@ -92,6 +92,8 @@ pub struct MsgWriter {
     io: WriteHalf<BoxIo>,
     chunks: ChunkWriter,
     out: Vec<u8>,
+    /// Bytes of `out` already written.
+    written: usize,
     sent: u64,
 }
 
@@ -121,15 +123,22 @@ impl MsgWriter {
     }
 
     pub fn should_flush(&self) -> bool {
-        self.out.len() >= FLUSH_AT
+        self.out.len() - self.written >= FLUSH_AT
     }
 
+    /// Cancel-safe: bytes already written are not written again, so a
+    /// connection whose flush was interrupted can still be used.
     pub async fn flush(&mut self) -> io::Result<()> {
-        if !self.out.is_empty() {
-            self.io.write_all(&self.out).await?;
-            self.sent += self.out.len() as u64;
-            self.out.clear();
+        while self.written < self.out.len() {
+            let n = self.io.write(&self.out[self.written..]).await?;
+            if n == 0 {
+                return Err(io::ErrorKind::WriteZero.into());
+            }
+            self.written += n;
+            self.sent += n as u64;
         }
+        self.out.clear();
+        self.written = 0;
         self.io.flush().await
     }
 
@@ -152,6 +161,6 @@ pub fn split(io: BoxIo) -> (MsgReader, MsgWriter) {
     let (r, w) = tokio::io::split(io);
     (
         MsgReader { io: r, chunks: ChunkReader::new(), buf: vec![0; 64 * 1024], window: 0, acked: 0 },
-        MsgWriter { io: w, chunks: ChunkWriter::new(), out: Vec::new(), sent: 0 },
+        MsgWriter { io: w, chunks: ChunkWriter::new(), out: Vec::new(), written: 0, sent: 0 },
     )
 }
