@@ -321,6 +321,8 @@ export component TextField {
     Rectangle {
         border-radius: Theme.radius-md;
         background: root.read-only ? Theme.bg-elevated : Theme.bg-base;
+        // Long keys scroll inside the box instead of spilling past it.
+        clip: true;
         border-width: 1px;
         border-color: root.invalid ? Theme.error : input.has-focus ? Theme.accent-hover : ta.has-hover ? Theme.border-hover : Theme.border-default;
         animate border-color { duration: Theme.fast; }
