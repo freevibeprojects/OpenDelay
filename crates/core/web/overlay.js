@@ -17,14 +17,12 @@ function render(st) {
   const tone = PALETTE[OD.params.get("color")] || PALETTE[st.overlayColor] || PALETTE.violet;
   badge.style.setProperty("--tone", tone);
   const d = st.delay;
-  const delayed = st.connected && ["delayed", "buffering", "draining"].includes(d.state);
-  $("icon-delay").classList.toggle("off", !delayed);
-  $("icon-live").classList.toggle("off", delayed);
-  $("label").textContent = d.state === "draining" ? OD.t("badge_going_live") : delayed ? OD.t("badge_delay") : OD.t("badge_live");
-  const seconds = d.state === "buffering" ? d.targetMs / 1000 : d.currentMs / 1000;
-  $("value").textContent = delayed && d.state !== "draining" ? OD.duration(Math.round(seconds)) : "";
+  // Only the delay time, and only while the delay is on.
+  const delayed = st.connected && ["delayed", "buffering"].includes(d.state);
+  const seconds = (d.state === "delayed" ? d.currentMs : delayed ? d.targetMs : d.configuredMs) / 1000;
+  $("value").textContent = OD.duration(Math.round(seconds));
   $("progress").style.width = d.progress == null ? "0" : `${Math.round(d.progress * 100)}%`;
-  const show = preview || (st.overlayVisible && st.connected);
+  const show = preview || (st.overlayVisible && delayed);
   badge.classList.toggle("hidden", !show);
 }
 

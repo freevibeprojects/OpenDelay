@@ -39,11 +39,10 @@ export global Palette {
     }
 }
 
-// The on-stream badge, as the overlay page draws it.
+// The on-stream badge, as the overlay page draws it: the delay time only.
 export component OverlayBadge {
     in property <color> tone: Palette.color-of(AppState.overlay-color);
-    in property <bool> active: AppState.delay-active;
-    in property <int> seconds: AppState.current-delay-s;
+    in property <int> seconds: AppState.delay-active ? AppState.current-delay-s : AppState.configured-delay-s;
     in property <float> progress: AppState.progress;
     height: 52px;
     width: row.preferred-width;
@@ -56,32 +55,9 @@ export component OverlayBadge {
         drop-shadow-color: root.tone.with-alpha(0.3);
         clip: true;
         row := HorizontalLayout {
-            padding-left: 8px;
+            padding-left: 20px;
             padding-right: 20px;
-            spacing: 12px;
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 18px;
-                    background: root.tone.with-alpha(0.2);
-                    Image {
-                        source: root.active ? Icons.hourglass : Icons.live;
-                        colorize: root.tone;
-                        width: 20px;
-                        height: 20px;
-                    }
-                }
-            }
             Text {
-                text: root.active ? @tr("DELAY ON") : @tr("LIVE");
-                color: #f4f4f6;
-                font-size: 15px;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-            if root.active: Text {
                 text: Strings.duration(root.seconds);
                 color: root.tone;
                 font-size: 15px;
@@ -108,7 +84,7 @@ export component OverlayPage {
                 padding: 20px;
                 spacing: 10px;
                 SectionTitle { text: @tr("On-stream overlay"); }
-                Body { text: @tr("In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; the badge shows whether the delay is on."); }
+                Body { text: @tr("In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; the badge shows the delay time, only while the delay is on."); }
                 CopyField {
                     value: AppState.overlay-url;
                     label: @tr("Overlay URL");

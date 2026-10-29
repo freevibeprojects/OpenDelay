@@ -7,19 +7,13 @@ body.preview { background: linear-gradient(135deg, #1f2937 0%, #312e81 55%, #0f1
   --tone: #a48ffb;
   position: relative; overflow: hidden;
   display: inline-flex; align-items: center; gap: 12px;
-  height: 52px; padding: 0 20px 0 8px; border-radius: 26px;
+  height: 52px; padding: 0 20px; border-radius: 26px;
   background: rgba(10, 10, 13, 0.85);
   border: 1.5px solid color-mix(in srgb, var(--tone) 60%, transparent);
   box-shadow: 0 0 20px color-mix(in srgb, var(--tone) 30%, transparent);
   transition: opacity 300ms ease, transform 300ms ease;
 }
 .badge.hidden { opacity: 0; transform: translateY(-8px); }
-.icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
-        background: color-mix(in srgb, var(--tone) 20%, transparent); }
-.icon svg.off { display: none; }
-.icon svg { width: 20px; height: 20px; fill: none; stroke: var(--tone); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.label { font-weight: 700; font-size: 15px; letter-spacing: 0.02em; }
 .value { font-weight: 700; font-size: 15px; color: var(--tone); }
-.value:empty { display: none; }
 .progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--tone); transition: width 240ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .badge, .progress { transition: none; } }
