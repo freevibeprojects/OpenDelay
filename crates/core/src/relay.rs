@@ -154,6 +154,8 @@ pub(crate) struct Shared {
     pub changed: Arc<watch::Sender<u64>>,
     /// Why the last encoder was turned away, and when: encoders rarely show the reason.
     refused: Mutex<Option<(String, Instant)>>,
+    /// New streams start with the configured delay on.
+    delay_at_start: AtomicBool,
 }
 
 /// How long the last refusal stays in the status.
@@ -371,6 +373,12 @@ impl Shared {
         }
     }
 
+    /// The delay a new stream starts with when "delay at start" is on.
+    pub fn delay_at_start(&self) -> Option<Duration> {
+        let cfg = self.config();
+        (self.delay_at_start.load(Ordering::Relaxed) && cfg.mode_enabled).then_some(cfg.delay)
+    }
+
     pub fn kept_delay(&self, route: &Route) -> Option<Duration> {
         let kept = self.kept_delays.lock().unwrap_or_else(|e| e.into_inner());
         kept.get(&normalize_path(&route.path)).filter(|(_, at)| at.elapsed() < KEEP_DELAY_FOR).map(|(d, _)| *d)
@@ -403,6 +411,7 @@ impl Relay {
                 handovers: Mutex::default(),
                 changed: Arc::new(watch::Sender::new(0)),
                 refused: Mutex::default(),
+                delay_at_start: AtomicBool::new(false),
             }),
         }
     }
@@ -477,6 +486,10 @@ impl Relay {
     /// Replace the LAN access key; streams already connected keep running.
     pub fn set_lan_key(&self, key: Option<String>) {
         *self.shared.lan_key.write().unwrap_or_else(|e| e.into_inner()) = key;
+    }
+
+    pub fn set_delay_at_start(&self, on: bool) {
+        self.shared.delay_at_start.store(on, Ordering::Relaxed);
     }
 
     pub fn clear_emergency(&self) {

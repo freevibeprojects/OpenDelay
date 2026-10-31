@@ -628,3 +628,19 @@ async fn a_connection_without_the_stream_key_cannot_end_the_stream() {
     assert_eq!(streaming, [victim], "the stream goes on untouched");
     enc.send(&stream[..10]).await; // the encoder connection is still open
 }
+
+#[tokio::test]
+async fn delay_at_start_turns_the_delay_on_for_new_streams() {
+    let twitch = MockIngest::start(Behaviour::default()).await;
+    let delay = DelayConfig { mode_enabled: true, buffer: Duration::from_secs(3), delay: Duration::from_secs(1) };
+    let (relay, addr) = relay_for(
+        vec![route("t", format!("rtmp://{}/app", twitch.addr))],
+        RelayOptions { delay, ..Default::default() },
+    )
+    .await;
+    relay.set_delay_at_start(true);
+    let (mut enc, _) = Encoder::connect(addr, "t").await;
+    enc.publish("k").await;
+    assert!(relay.sessions()[0].engine().is_active(), "the delay is on from the first frame");
+    enc.unpublish().await;
+}

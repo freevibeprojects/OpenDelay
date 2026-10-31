@@ -55,6 +55,8 @@ pub struct Settings {
     pub delay_mode_enabled: bool,
     pub default_buffer_secs: u32,
     pub delay_secs: u32,
+    /// Every new stream starts with the delay on (viewers see it from the start, delayed).
+    pub delay_at_start: bool,
     pub listener_mode: ListenerMode,
     pub twitch_server: String,
     /// Access key other computers add to the server URL (`?key=`) in LAN mode.
@@ -88,6 +90,7 @@ impl Default for Settings {
             delay_mode_enabled: true,
             default_buffer_secs: 60,
             delay_secs: 30,
+            delay_at_start: false,
             listener_mode: ListenerMode::Local,
             twitch_server: TWITCH_AUTO.into(),
             lan_key: String::new(),

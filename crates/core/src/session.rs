@@ -522,6 +522,9 @@ async fn serve(
         sess.engine().start_delayed(d);
         sess.log
             .event(format!("Delay kept from the previous connection: viewers see this stream {} s later", d.as_secs()));
+    } else if let Some(d) = relay.delay_at_start() {
+        sess.engine().start_delayed(d);
+        sess.log.event(format!("Delay on from the start: viewers see this stream {} s later", d.as_secs()));
     }
     if let Err(reason) = relay.claim_route(sess) {
         let _ = ew.send(&denied(&reason)).await;

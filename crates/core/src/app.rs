@@ -284,6 +284,7 @@ impl App {
                 ..Default::default()
             },
         );
+        relay.set_delay_at_start(s.delay_at_start);
         let (save_soon, save_requests) = std::sync::mpsc::channel::<()>();
         let app = Arc::new(App {
             relay,
@@ -409,6 +410,7 @@ impl App {
         let mut next = guard.clone();
         f(&mut next)?;
         self.relay.set_routes(effective_routes(&next));
+        self.relay.set_delay_at_start(next.delay_at_start);
         *guard = next;
         drop(guard);
         self.notify();
