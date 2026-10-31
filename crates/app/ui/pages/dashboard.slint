@@ -231,11 +231,12 @@ export component DashboardPage {
                             }
                         }
                     }
-                    Button {
+                    // Only while delayed: a greyed "Go live" while already live looked broken.
+                    if root.active: Button {
                         text: @tr("Go live");
                         show-icon: true;
                         icon: Icons.live;
-                        enabled: root.active && AppState.state != "draining";
+                        enabled: AppState.state != "draining";
                         clicked => { AppState.go-live(); }
                     }
                 }
