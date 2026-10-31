@@ -226,8 +226,8 @@ sum() { sha256sum "$1" | cut -d' ' -f1; }
 cat > manifest.json <<JSON
 { "version": "$V",
   "files": [
-    { "platform": "linux-x86_64", "name": "$L", "sha256": "$(sum $L)", "size": $(stat -c %s $L) },
-    { "platform": "windows-x86_64", "name": "$W", "sha256": "$(sum $W)", "size": $(stat -c %s $W),
+    { "platform": "linux-x86_64", "name": "$L", "sha256": "$(sum $L)", "length": $(stat -c %s $L) },
+    { "platform": "windows-x86_64", "name": "$W", "sha256": "$(sum $W)", "length": $(stat -c %s $W),
       "exe_sha256": "$(sum target/x86_64-pc-windows-msvc/release/opendelay.exe)" } ] }
 JSON
 openssl pkeyutl -sign -inkey release-key.pem -rawin -in manifest.json | base64 -w0 > manifest.json.sig

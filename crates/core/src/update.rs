@@ -98,8 +98,10 @@ struct ManifestFile {
     platform: String,
     name: String,
     sha256: String,
+    /// Archive size in bytes. Not `size`: 1.3.1 read that as a download limit
+    /// one byte too small, so manifests leave `size` out for it to keep working.
     #[serde(default)]
-    size: Option<u64>,
+    length: Option<u64>,
     #[serde(default)]
     exe_sha256: Option<String>,
 }
@@ -233,7 +235,7 @@ fn offer(
         notes: r.body.clone(),
         page_url: r.html_url.clone(),
         asset_url: url(&file.name)?,
-        size: file.size,
+        size: file.length,
         sha256: checksum(&file.sha256)?,
         exe_sha256: file.exe_sha256.as_deref().map(checksum).transpose()?,
         asset_name: file.name,
@@ -327,7 +329,8 @@ pub fn save_verified(mut from: impl Read, expected: &[u8; 32], size: Option<u64>
 pub fn download(info: &UpdateInfo, dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let path = dir.join(&info.asset_name);
-    let limit = info.size.unwrap_or(MAX_DOWNLOAD).min(MAX_DOWNLOAD);
+    // One byte more than expected: the reader fails on reaching its limit.
+    let limit = info.size.map_or(MAX_DOWNLOAD, |s| s.saturating_add(1)).min(MAX_DOWNLOAD);
     save_verified(crate::net::get_reader(&info.asset_url, limit)?, &info.sha256, info.size, &path)?;
     Ok(path)
 }
@@ -475,7 +478,7 @@ mod tests {
 
         fn manifest(&self, version: &str, name: &str) -> String {
             format!(
-                r#"{{"version":"{version}","files":[{{"platform":"windows-x86_64","name":"{name}","sha256":"{}","size":{},"exe_sha256":"{}"}}]}}"#,
+                r#"{{"version":"{version}","files":[{{"platform":"windows-x86_64","name":"{name}","sha256":"{}","length":{},"exe_sha256":"{}"}}]}}"#,
                 hex(&sha256(&self.archive)),
                 self.archive.len(),
                 hex(&sha256(&self.exe))

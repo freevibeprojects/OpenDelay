@@ -237,7 +237,8 @@ Each entry: the decision, then why.
   (version, and per platform the archive name and SHA-256) is signed with
   Ed25519; the signed version must be newer than the running one and the
   archive is streamed to a temporary file, hashed, and kept in
-  `<data dir>/updates` only if it matches (also the signed `size`; written
+  `<data dir>/updates` only if it matches (also the signed `length`, not `size`,
+  which 1.3.1 misread as a download limit one byte too small; written
   under a unique name other processes cannot write to). The check already
   verifies the manifest, so the version shown is the signed one, and it must
   equal the feed's tag. The highest signed version seen is kept in the
