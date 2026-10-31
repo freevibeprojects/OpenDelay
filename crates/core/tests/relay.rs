@@ -496,6 +496,9 @@ async fn a_route_sending_another_routes_stream_can_be_stopped_mid_stream() {
         ..route("kick", format!("rtmp://{}/app", kick.addr))
     };
     let kick_route = app.add_route(kick_route).unwrap();
+    let twin = app.add_route(Route { name: "Kick 2".into(), enabled: false, ..kick_route.clone() }).unwrap();
+    assert_eq!(twin.path, "kick-2", "a mirror's hidden path never blocks saving it");
+    app.delete_route(&twin.id).unwrap();
     let addr = app.start_rtmp(0).await.unwrap()[0];
     let streaming = |id: &str| app.status().streams.iter().any(|s| s.route_id == id);
 

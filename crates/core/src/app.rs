@@ -603,7 +603,7 @@ impl App {
     }
 
     fn save_route(&self, existing: Option<&str>, route: Route) -> Result<Route, Problem> {
-        let saved = route.clone();
+        let mut saved = route.clone();
         self.update_settings(|s| {
             let mut candidate = route.clone();
             match existing {
@@ -624,6 +624,16 @@ impl App {
                 candidate.key = old.key.clone();
             }
             candidate.key = candidate.key.trim().to_owned();
+            if !candidate.source.is_empty() {
+                // Encoders never publish to a mirror's path and the editor hides it: pick a free one.
+                let (id, base) = (candidate.id.clone(), candidate.path.clone());
+                let taken = |p: &str| s.routes.iter().any(|r| r.id != id && normalize_path(&r.path) == p);
+                let mut n = 2;
+                while taken(&candidate.path) {
+                    candidate.path = format!("{base}-{n}");
+                    n += 1;
+                }
+            }
             if candidate.preset == "twitch" {
                 // A Twitch route's server is the Twitch server setting.
                 if candidate.upstream.trim().is_empty() {
@@ -633,6 +643,7 @@ impl App {
                 s.twitch_server = candidate.upstream.clone();
             }
             routes::validate(&candidate, &s.routes)?;
+            saved = candidate.clone();
             match existing {
                 Some(id) => {
                     let slot = s
