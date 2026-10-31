@@ -64,6 +64,8 @@ pub struct Settings {
     /// UI language code; empty = follow the system.
     pub language: String,
     pub update_check: bool,
+    /// The first start asked whether to check for updates (`false` asks again).
+    pub update_check_asked: bool,
     pub hotkeys: Hotkeys,
     /// Overlay badge colour (palette name).
     pub overlay_color: String,
@@ -96,6 +98,7 @@ impl Default for Settings {
             lan_key: String::new(),
             language: String::new(),
             update_check: false,
+            update_check_asked: false,
             hotkeys: Hotkeys::default(),
             overlay_color: "violet".into(),
             overlay_style: "minimal".into(),

@@ -135,10 +135,15 @@ export component SettingsPage {
                         text: @tr("Check now");
                         clicked => { AppState.check-update(); }
                     }
-                    if AppState.update-available: Button {
+                    if AppState.update-available && !AppState.update-ready: Button {
                         text: @tr("Download and verify");
                         kind: ButtonKind.primary;
                         clicked => { AppState.download-update(); }
+                    }
+                    if AppState.update-ready: Button {
+                        text: @tr("Install and restart");
+                        kind: ButtonKind.primary;
+                        clicked => { AppState.install-update(); }
                     }
                     Body { text: AppState.update-status; vertical-alignment: center; horizontal-stretch: 1; }
                 }

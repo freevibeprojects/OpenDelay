@@ -178,10 +178,13 @@ expands into a huge structure) into a reported crash.
 ## Releases and updates
 
 The optional update check reads a release feed (GitHub "latest release"
-format). A download is kept only if it matches a signed manifest: the
-manifest's Ed25519 signature must verify, its version must be newer than the
-running one, and the archive's SHA-256 must be the one it lists for this
-platform. Release builds set three build-time variables; without them the
+format); the first start asks whether to turn it on. A download is kept only
+if it matches a signed manifest: the manifest's Ed25519 signature must verify,
+its version must be newer than the running one, and the archive's SHA-256 must
+be the one it lists for this platform. On Windows, **Install and restart**
+then replaces `opendelay.exe` with the one in the archive (the previous one is
+kept as `opendelay.old` until the next start); it is refused while a stream
+runs, and the folder must be writable. Release builds set three build-time variables; without them the
 feed URL and help links are placeholders and every download is rejected
 (fail closed):
 

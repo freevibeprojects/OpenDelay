@@ -20,8 +20,21 @@ fn main() {
     // Ports can be moved when another program already uses the defaults.
     let port = |var: &str, default: u16| std::env::var(var).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
     let http_port = port("OPENDELAY_HTTP_PORT", HTTP_PORT);
+    if std::env::args().any(|a| a == "--updated") {
+        // Started by the version it replaced, which is still quitting: wait (bounded) for its port.
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], http_port));
+        for _ in 0..75 {
+            if std::net::TcpListener::bind(addr).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
     if platform::activate_running_instance(http_port) {
         return; // the running instance shows its window
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        opendelay_core::update::remove_old(&exe); // left by an installed update
     }
     // Two workers are plenty for a handful of streams and the local API.
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("tokio runtime");

@@ -22,6 +22,7 @@ getrandom = "0.2"
 ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "_ring"] }
 ring = "0.17"
 base64 = "0.22"
+miniz_oxide = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["signal"] }

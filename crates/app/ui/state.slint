@@ -109,6 +109,10 @@ export global AppState {
     in property <bool> update-check;
     in property <string> update-status;
     in property <bool> update-available;
+    // a verified download can be installed (Windows)
+    in property <bool> update-ready;
+    // first start: ask whether to check for updates
+    in property <bool> ask-update-check;
     in property <bool> reduce-motion;
     in property <string> listener-mode: "local";
     in property <bool> restart-required;
@@ -156,6 +160,8 @@ export global AppState {
     callback set-update-check(bool);
     callback check-update();
     callback download-update();
+    callback install-update();
+    callback answer-update-check(bool);
     callback set-reduce-motion(bool);
     callback set-listener-mode(string);
     callback new-lan-key();
@@ -337,6 +343,9 @@ export global Strings {
         if (kind == "downloading") { return @tr("Downloading and verifying the signature…"); }
         if (kind == "saved") { return @tr("Signature verified. Saved to {}.", value); }
         if (kind == "failed") { return @tr("Download failed: {}", value); }
+        if (kind == "ready") { return @tr("Version {} is verified and ready to install.", value); }
+        if (kind == "streaming") { return @tr("Stop streaming first: restarting would end your stream."); }
+        if (kind == "install_failed") { return @tr("Could not install the update: {}", value); }
         ""
     }
 

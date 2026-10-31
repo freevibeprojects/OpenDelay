@@ -76,6 +76,8 @@ pub struct Ui {
     hotkeys: RefCell<Binder>,
     twitch: RefCell<Vec<TwitchIngest>>,
     update: RefCell<Option<UpdateInfo>>,
+    /// Verified archive ready to install.
+    downloaded: RefCell<Option<std::path::PathBuf>>,
 }
 
 impl Ui {
@@ -404,6 +406,7 @@ impl Ui {
                 Ok(Some(info)) => {
                     ui.set_update_status("available", &info.version);
                     ui.state().set_update_available(true);
+                    ui.state().invoke_toast(ui.state().get_update_status(), ss("info"));
                     *ui.update.borrow_mut() = Some(info);
                 }
                 Ok(None) => ui.set_update_status("none", ""),
@@ -417,10 +420,17 @@ impl Ui {
         let Some(info) = self.update.borrow().clone() else { return };
         let Some(dir) = self.app.log_dir().and_then(|d| d.parent()).map(|d| d.join("updates")) else { return };
         self.set_update_status("downloading", "");
+        let version = info.version.clone();
         let job = self.rt.spawn_blocking(move || update::download(&info, &dir, env!("CARGO_PKG_VERSION")));
         let ui = self.clone();
         let _ = slint::spawn_local(async move {
             match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
+                // Windows archives install from the app; elsewhere the folder opens.
+                Ok(path) if cfg!(windows) => {
+                    ui.set_update_status("ready", &version);
+                    ui.state().set_update_ready(true);
+                    *ui.downloaded.borrow_mut() = Some(path);
+                }
                 Ok(path) => {
                     ui.set_update_status("saved", &path.to_string_lossy());
                     if let Some(folder) = path.parent() {
@@ -430,6 +440,25 @@ impl Ui {
                 Err(e) => ui.set_update_status("failed", &e),
             }
         });
+    }
+
+    /// Only on the user's request, and never while a stream runs: replace the
+    /// executable with the verified one and start it.
+    fn install_update(&self) {
+        let Some(archive) = self.downloaded.borrow().clone() else { return };
+        if !self.app.relay.sessions().is_empty() {
+            return self.set_update_status("streaming", "");
+        }
+        let started = std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| {
+            update::install(&archive, &exe)?;
+            std::process::Command::new(&exe).arg("--updated").spawn().map_err(|e| e.to_string())
+        });
+        match started {
+            Ok(_) => {
+                let _ = slint::quit_event_loop();
+            }
+            Err(e) => self.set_update_status("install_failed", &e),
+        }
     }
 
     fn apply_hotkeys(&self) {
@@ -496,6 +525,7 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         hotkeys: RefCell::new(Binder::new()),
         twitch: RefCell::default(),
         update: RefCell::default(),
+        downloaded: RefCell::default(),
     });
     let settings = ui.app.settings();
     ui.set_language(&settings.language);
@@ -538,6 +568,8 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     ui.refresh_logs();
     if settings.update_check {
         ui.check_update();
+    } else if !settings.update_check_asked {
+        s.set_ask_update_check(true);
     }
 
     // A weak handle per callback keeps the Ui free of reference cycles.
@@ -683,6 +715,17 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }));
     s.on_check_update(with_ui!(|u| u.check_update()));
     s.on_download_update(with_ui!(|u| u.download_update()));
+    s.on_install_update(with_ui!(|u| u.install_update()));
+    s.on_answer_update_check(with_ui!(|u, on| {
+        u.state().set_ask_update_check(false);
+        u.save(|s| {
+            s.update_check = on;
+            s.update_check_asked = true;
+        });
+        if on {
+            u.check_update();
+        }
+    }));
     s.on_capture_hotkey(with_ui!(|u, which, text, ctrl, alt, shift, meta| {
         u.capture_hotkey(&which, &text, ctrl, alt, shift, meta)
     }));

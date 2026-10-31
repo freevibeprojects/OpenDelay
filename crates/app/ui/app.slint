@@ -3,7 +3,7 @@
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { NavItem, IconButton, Toast, Choice, Card, Button, ButtonKind } from "widgets.slint";
+import { NavItem, IconButton, Toast, Choice, Card, Button, ButtonKind, Modal, Body } from "widgets.slint";
 import { AppState, Strings, RouteItem, StreamItem, Finding, LogItem } from "state.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { MultistreamPage, RouteEditor, RouteEditorModal } from "pages/multistream.slint";
@@ -187,6 +187,29 @@ export component MainWindow inherits Window {
     if RouteEditor.open: RouteEditorModal {
         width: parent.width;
         height: parent.height;
+    }
+
+    if AppState.ask-update-check: Modal {
+        width: parent.width;
+        height: parent.height;
+        title: @tr("Check for updates automatically?");
+        card-width: 460px;
+        close => { AppState.answer-update-check(false); }
+        Body { text: @tr("OpenDelay can ask its GitHub release page for a new version each time it starts. Nothing is downloaded or installed without asking you. You can change this later in Settings."); }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            Button {
+                text: @tr("No");
+                kind: ButtonKind.ghost;
+                clicked => { AppState.answer-update-check(false); }
+            }
+            Button {
+                text: @tr("Yes, check at startup");
+                kind: ButtonKind.primary;
+                clicked => { AppState.answer-update-check(true); }
+            }
+        }
     }
 
     if AppState.quitting: Rectangle {

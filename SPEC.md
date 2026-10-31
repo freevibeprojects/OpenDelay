@@ -291,7 +291,8 @@ for older files. Unknown fields must not cause a crash.
 
 Optional update check against the project's own release feed (e.g. GitHub
 Releases). Updates must be signature-verified before installing. The user is
-asked before downloading; no silent updates.
+asked before downloading and before installing; no silent updates. The first
+start asks whether to check automatically.
 
 ## 12. Explicit non-goals
 

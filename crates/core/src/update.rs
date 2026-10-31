@@ -15,6 +15,10 @@
 //! The signed version must be newer than the running one (no rollback) and the
 //! archive must be the one listed for this platform with that SHA-256 (no
 //! swapped files); the feed itself is not trusted.
+//!
+//! On Windows a verified archive can be installed on request: the new
+//! executable replaces the running one, which is kept as `.old` until the
+//! next start (a running executable can be renamed but not deleted).
 
 use base64::Engine;
 use ring::digest;
@@ -248,6 +252,63 @@ pub fn download(info: &UpdateInfo, dir: &Path, current: &str) -> Result<PathBuf,
     Ok(path)
 }
 
+/// The file in a ZIP archive whose path ends with `/name` (or is `name`).
+/// Only for archives already checked against the signed manifest.
+pub fn unzip(zip: &[u8], name: &str) -> Result<Vec<u8>, String> {
+    let bad = || "The update archive is damaged.".to_owned();
+    let u16_at = |i: usize| zip.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]) as usize).ok_or_else(bad);
+    let u32_at =
+        |i: usize| zip.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize).ok_or_else(bad);
+    // End of central directory: the last record, before an optional comment.
+    let end = (0..zip.len().saturating_sub(21)).rev().find(|&i| zip[i..].starts_with(b"PK")).ok_or_else(bad)?;
+    let (count, mut at) = (u16_at(end + 10)?, u32_at(end + 16)?);
+    for _ in 0..count {
+        if !zip.get(at..).is_some_and(|r| r.starts_with(b"PK")) {
+            return Err(bad());
+        }
+        let (method, size, len) = (u16_at(at + 10)?, u32_at(at + 20)?, u32_at(at + 24)?);
+        let name_len = u16_at(at + 28)?;
+        let entry = zip.get(at + 46..at + 46 + name_len).ok_or_else(bad)?;
+        let offset = u32_at(at + 42)?;
+        at += 46 + name_len + u16_at(at + 30)? + u16_at(at + 32)?;
+        if entry != name.as_bytes() && !entry.ends_with(format!("/{name}").as_bytes()) {
+            continue;
+        }
+        let start = offset + 30 + u16_at(offset + 26)? + u16_at(offset + 28)?;
+        let data = zip.get(start..start + size).ok_or_else(bad)?;
+        return match method {
+            0 => Ok(data.to_vec()),
+            8 => miniz_oxide::inflate::decompress_to_vec_with_limit(data, len).map_err(|_| bad()),
+            _ => Err(bad()),
+        };
+    }
+    Err(format!("The update archive has no {name}."))
+}
+
+/// Replace the executable `exe` with the one in the verified `archive`; the
+/// old one is kept as `<exe>.old` (see [`remove_old`]).
+pub fn install(archive: &Path, exe: &Path) -> Result<(), String> {
+    let name = exe.file_name().and_then(|n| n.to_str()).ok_or("Unknown executable name.")?;
+    let new = unzip(&std::fs::read(archive).map_err(|e| e.to_string())?, name)?;
+    let (next, old) = (exe.with_extension("new"), exe.with_extension("old"));
+    let fail = |e: std::io::Error| format!("Could not replace {}: {e}", exe.display());
+    std::fs::write(&next, new).map_err(fail)?;
+    let _ = std::fs::remove_file(&old);
+    if let Err(e) = std::fs::rename(exe, &old) {
+        let _ = std::fs::remove_file(&next);
+        return Err(fail(e));
+    }
+    std::fs::rename(&next, exe).map_err(|e| {
+        let _ = std::fs::rename(&old, exe); // put the running version back
+        fail(e)
+    })
+}
+
+/// Delete the executable a previous [`install`] replaced.
+pub fn remove_old(exe: &Path) {
+    let _ = std::fs::remove_file(exe.with_extension("old"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +413,60 @@ mod tests {
         assert!(std::fs::read_dir(&dir).unwrap().next().is_none(), "nothing kept");
         save_verified(&b"the real archive"[..], &expected, &path).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"the real archive");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A ZIP archive of (name, method, content) entries, as release archives are built.
+    fn zip(entries: &[(&str, u16, &[u8])]) -> Vec<u8> {
+        let (mut out, mut dir) = (Vec::new(), Vec::new());
+        for (name, method, content) in entries {
+            let data = if *method == 8 { miniz_oxide::deflate::compress_to_vec(content, 6) } else { content.to_vec() };
+            let sizes = [(data.len() as u32).to_le_bytes(), (content.len() as u32).to_le_bytes()].concat();
+            let common = [&20u16.to_le_bytes()[..], &[0, 0], &method.to_le_bytes(), &[0; 8], &sizes].concat();
+            let n = (name.len() as u16).to_le_bytes();
+            dir.extend(
+                [&b"PK "[..], &common, &n, &[0; 12], &(out.len() as u32).to_le_bytes(), name.as_bytes()].concat(),
+            );
+            out.extend([&b"PK"[..], &common, &n, &[0, 0], name.as_bytes(), &data].concat());
+        }
+        let count = (entries.len() as u16).to_le_bytes();
+        let end = [
+            &b"PK"[..],
+            &[0; 4],
+            &count,
+            &count,
+            &(dir.len() as u32).to_le_bytes(),
+            &(out.len() as u32).to_le_bytes(),
+            &[0, 0],
+        ]
+        .concat();
+        [out, dir, end].concat()
+    }
+
+    #[test]
+    fn install_replaces_the_executable() {
+        let exe_data = b"new version ".repeat(1000);
+        let archive =
+            zip(&[("opendelay-9.0.0/README.md", 0, b"readme"), ("opendelay-9.0.0/opendelay.exe", 8, &exe_data)]);
+        assert_eq!(unzip(&archive, "README.md").unwrap(), b"readme");
+        assert_eq!(unzip(&archive, "opendelay.exe").unwrap(), exe_data);
+        assert!(unzip(&archive, "other.exe").is_err());
+        assert!(unzip(&archive[..archive.len() / 2], "opendelay.exe").is_err(), "damaged archive");
+
+        let dir = std::env::temp_dir().join(format!("opendelay-install-{}", crate::diag::short_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (exe, zip_path) = (dir.join("opendelay.exe"), dir.join("update.zip"));
+        std::fs::write(&exe, b"old version").unwrap();
+        std::fs::write(&zip_path, &archive).unwrap();
+        install(&zip_path, &exe).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), exe_data);
+        assert_eq!(std::fs::read(exe.with_extension("old")).unwrap(), b"old version");
+        remove_old(&exe);
+        assert!(!exe.with_extension("old").exists());
+        // An archive without the executable leaves everything as it was.
+        std::fs::write(&zip_path, zip(&[("x/README.md", 0, b"readme")])).unwrap();
+        assert!(install(&zip_path, &exe).is_err());
+        assert_eq!(std::fs::read(&exe).unwrap(), exe_data);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

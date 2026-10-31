@@ -170,7 +170,7 @@ Each entry: the decision, then why.
   missing ones take defaults, out-of-range values are clamped, a corrupt file
   is renamed to `settings.json.bad` and defaults are used. Saves are atomic.
 - The update check is **off by default** (opt-in), in keeping with the
-  no-telemetry rule.
+  no-telemetry rule; the first start asks once (`updateCheckAsked`).
 
 ## Desktop UI
 
@@ -237,7 +237,13 @@ Each entry: the decision, then why.
   (version, and per platform the archive name and SHA-256) is signed with
   Ed25519; the signed version must be newer than the running one and the
   archive is streamed to a temporary file, hashed, and kept in
-  `<data dir>/updates` only if it matches. Nothing is executed. Feed URL and
+  `<data dir>/updates` only if it matches. On Windows the user can then
+  install it: the executable is read from the verified ZIP (`miniz_oxide`,
+  already in the build through `png`), the running `opendelay.exe` is renamed
+  to `opendelay.old` (a running executable can be renamed, not deleted) and
+  replaced, and the new one starts with `--updated`, waiting up to 15 s for
+  the old one to free its port. Refused while a stream runs. Elsewhere the
+  folder opens and the archive is unpacked by hand. Feed URL and
   public key are placeholders (verification fails closed). Verification uses
   `ring` (already linked by rustls) rather than a second Ed25519 crate.
 - **Tray**: Slint's built-in `SystemTrayIcon` (Win32 / StatusNotifierItem), so
