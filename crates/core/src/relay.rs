@@ -179,7 +179,8 @@ impl Shared {
             Some(r) => Ok(r.clone()),
             None => Err(format!("OpenDelay has no route \"/{path}\". Check the server URL in your encoder.")),
         };
-        *self.refused.lock().unwrap_or_else(|e| e.into_inner()) = result.as_ref().err().map(|e| (e.clone(), Instant::now()));
+        *self.refused.lock().unwrap_or_else(|e| e.into_inner()) =
+            result.as_ref().err().map(|e| (e.clone(), Instant::now()));
         if result.is_err() {
             self.changed.send_modify(|v| *v += 1);
         }
