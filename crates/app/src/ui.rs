@@ -211,7 +211,7 @@ impl Ui {
             .map(|r| {
                 let upstream = if r.preset == "twitch" { settings.twitch_server.clone() } else { r.upstream.clone() };
                 RouteItem {
-                    host: ss(UpstreamUrl::parse(&upstream).map(|u| u.host).unwrap_or_default()),
+                    host: ss(UpstreamUrl::parse(&upstream).map(|u| u.authority).unwrap_or_default()),
                     id: ss(&r.id),
                     name: ss(&r.name),
                     preset: ss(&r.preset),
