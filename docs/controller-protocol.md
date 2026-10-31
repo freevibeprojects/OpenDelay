@@ -94,8 +94,8 @@ names the cause (`go_live_first`, `delay_range`,
 | `buffer_not_ready` | The buffer has nothing usable yet; the message includes the fill percentage. |
 | `already_active` | The delay is already on. |
 | `already_live` | The stream is already live. |
-| `delay_mode_off` | Delay mode is turned off. |
-| `invalid_in_mode` | The action is not valid right now (e.g. turning delay mode off while delayed). |
+| `delay_mode_off` | The delay buffer is turned off. |
+| `invalid_in_mode` | The action is not valid right now (e.g. turning the delay buffer off while delayed). |
 | `transition_in_progress` | Going live is still waiting for a keyframe. |
 | `unsustainable` | The requested delay does not fit in memory at the current bitrate. |
 | `transport_error` | The stream connection failed while applying the action. |

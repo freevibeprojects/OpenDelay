@@ -116,7 +116,7 @@ impl Refusal {
 
 fn detail_text(code: &str) -> &'static str {
     match code {
-        "go_live_first" => "Go live before turning delay mode off.",
+        "go_live_first" => "Go live before turning the delay buffer off.",
         "delay_range" => "The delay must be between 1 second and 10 minutes.",
         "buffer_range" => "The buffer must be between 5 seconds and 10 minutes.",
         "not_a_number" => "Invalid number of seconds.",
@@ -133,7 +133,7 @@ impl fmt::Display for Refusal {
             }
             Refusal::AlreadyActive => f.write_str("The delay is already active."),
             Refusal::AlreadyLive => f.write_str("The stream is already live."),
-            Refusal::DelayModeOff => f.write_str("Delay mode is turned off."),
+            Refusal::DelayModeOff => f.write_str("The delay buffer is turned off."),
             Refusal::InvalidInMode(d) | Refusal::InvalidValue(d) => f.write_str(detail_text(d)),
             Refusal::TransitionInProgress => f.write_str("Another transition is still in progress."),
             Refusal::Unsustainable { max_secs } => {

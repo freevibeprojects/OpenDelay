@@ -248,6 +248,7 @@ impl Ui {
         s.set_reduce_motion(st.reduce_motion);
         self.window.global::<Theme>().set_reduce_motion(st.reduce_motion);
         s.set_overlay_color(ss(&st.overlay_color));
+        s.set_delay_at_start(st.delay_at_start);
         s.set_overlay_style(ss(&st.overlay_style));
         s.set_overlay_text(ss(&st.overlay_text));
         s.set_overlay_only_delayed(st.overlay_only_delayed);
@@ -564,6 +565,9 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }));
     s.on_set_delay_mode(with_ui!(|u, on| {
         u.act(Action::SetDelayMode { enabled: on }, if on { "mode-on" } else { "mode-off" });
+    }));
+    s.on_set_delay_at_start(with_ui!(|u, on| {
+        u.save(|s| s.delay_at_start = on);
     }));
     s.on_toggle_overlay(with_ui!(|u| {
         let visible = !u.app.status().overlay_visible;

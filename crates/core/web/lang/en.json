@@ -43,7 +43,7 @@
  "r_buffer_not_ready": "The delay buffer is not ready yet.",
  "r_already_active": "The delay is already on.",
  "r_already_live": "You are already live.",
- "r_delay_mode_off": "Delay mode is turned off.",
+ "r_delay_mode_off": "The delay buffer is turned off.",
  "r_invalid_in_mode": "That is not possible right now.",
  "r_transition_in_progress": "Please wait for the current transition to finish.",
  "r_unsustainable": "This delay does not fit in memory at the current bitrate.",

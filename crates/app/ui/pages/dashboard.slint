@@ -173,7 +173,8 @@ export component DashboardPage {
                         RollingNumber {
                             value: root.active ? AppState.current-delay-s : AppState.configured-delay-s;
                             font-size: 116px;
-                            color: root.active ? Theme.hero-gradient : Theme.text-primary;
+                            // dimmed: the delay that would be used, not in effect yet
+                            color: root.active ? Theme.hero-gradient : Theme.text-muted;
                         }
                         VerticalLayout {
                             alignment: end;
@@ -199,7 +200,8 @@ export component DashboardPage {
                         : AppState.state == "draining" ? @tr("Switching at the next keyframe…")
                         : AppState.state == "delayed" && AppState.current-delay-s != AppState.target-delay-s ? @tr("Viewers are {} behind. Switching to {} at the next keyframe…", Strings.duration(AppState.current-delay-s), Strings.duration(AppState.target-delay-s))
                         : AppState.state == "delayed" ? @tr("Viewers are {} behind.", Strings.duration(AppState.current-delay-s))
-                        : AppState.ready ? @tr("Viewers see you live. The delay can start instantly.")
+                        : !AppState.delay-mode ? @tr("Viewers see you live. Turn on the delay buffer below to use the delay.")
+                        : AppState.ready ? @tr("Viewers see you live. \"Enable delay\" puts them {} behind at once.", Strings.duration(AppState.configured-delay-s))
                         : @tr("Viewers see you live. The buffer is still filling; enabling now builds the delay up.");
                 }
                 if AppState.progress >= 0: HorizontalLayout {
@@ -298,14 +300,24 @@ export component DashboardPage {
                     VerticalLayout {
                         spacing: 8px;
                         alignment: start;
-                        Text { text: @tr("Delay mode"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
-                        VerticalLayout {
-                            alignment: center;
+                        Text { text: @tr("Delay buffer"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 10px;
                             min-height: 38px;
-                            Toggle {
-                                label: @tr("Delay mode");
-                                checked: AppState.delay-mode;
-                                toggled(on) => { AppState.set-delay-mode(on); }
+                            VerticalLayout {
+                                alignment: center;
+                                Toggle {
+                                    label: @tr("Delay buffer");
+                                    checked: AppState.delay-mode;
+                                    toggled(on) => { AppState.set-delay-mode(on); }
+                                }
+                            }
+                            Text {
+                                text: AppState.delay-mode ? @tr("On: keeps the last minutes ready") : @tr("Off: no delay possible");
+                                color: AppState.delay-mode ? Theme.text-secondary : Theme.warning;
+                                font-size: 12px;
+                                vertical-alignment: center;
                             }
                         }
                     }
@@ -331,6 +343,21 @@ export component DashboardPage {
                         color: Theme.warning;
                         font-size: 12px;
                         wrap: word-wrap;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Toggle {
+                        label: @tr("Start every stream with the delay on");
+                        checked: AppState.delay-at-start;
+                        enabled: AppState.delay-mode;
+                        toggled(on) => { AppState.set-delay-at-start(on); }
+                    }
+                    Text {
+                        text: @tr("Start every stream with the delay on");
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
                     }
                 }
             }
