@@ -162,7 +162,7 @@ export component RouteEditorModal inherits Modal {
             mono: true;
         }
         Body {
-            text: @tr("Your encoder publishes to rtmp://127.0.0.1:1937/{}. Path changes take effect the next time the encoder connects.", RouteEditor.route.path);
+            text: @tr("Your encoder publishes to rtmp://127.0.0.1:{}/{}. Path changes take effect the next time the encoder connects.", AppState.rtmp-port, RouteEditor.route.path);
             font-size: 12px;
         }
     }

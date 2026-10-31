@@ -96,8 +96,8 @@ export component SettingsPage {
                 SettingRow {
                     title: @tr("Accept encoders from");
                     description: AppState.listener-mode == "lan"
-                        ? @tr("This computer and the local network ({}). Port 1937. Other computers need the access key shown on the Setup page.", AppState.lan-addresses == "" ? @tr("no network address found") : AppState.lan-addresses)
-                        : @tr("This computer only (127.0.0.1). Port 1937.");
+                        ? @tr("This computer and the local network ({}). Port {}. Other computers need the access key shown on the Setup page.", AppState.lan-addresses == "" ? @tr("no network address found") : AppState.lan-addresses, AppState.rtmp-port)
+                        : @tr("This computer only (127.0.0.1). Port {}.", AppState.rtmp-port);
                     Segmented {
                         label: @tr("Accept encoders from");
                         width: 280px;

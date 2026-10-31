@@ -500,6 +500,7 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     let http = ui.app.http_port();
     s.set_overlay_url(ss(format!("http://127.0.0.1:{http}/overlay")));
     s.set_dock_url(ss(format!("http://127.0.0.1:{http}/dock")));
+    s.set_rtmp_port(ui.app.rtmp_port().into());
     s.set_ws_url(ss(format!("ws://127.0.0.1:{http}/ws")));
     s.set_api_url(ss(format!("http://127.0.0.1:{http}/api/status")));
     s.set_presets(model(
