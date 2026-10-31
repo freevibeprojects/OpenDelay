@@ -152,7 +152,12 @@ pub(crate) struct Shared {
     handovers: Mutex<HashMap<String, Handover>>,
     /// Bumped when a stream connects, ends, changes phase or jumps (status pushes).
     pub changed: Arc<watch::Sender<u64>>,
+    /// Why the last encoder was turned away, and when: encoders rarely show the reason.
+    refused: Mutex<Option<(String, Instant)>>,
 }
+
+/// How long the last refusal stays in the status.
+const SHOW_REFUSED_FOR: Duration = Duration::from_secs(120);
 
 /// How long a reconnecting encoder still gets the delay its route ended with.
 const KEEP_DELAY_FOR: Duration = Duration::from_secs(600);
@@ -165,7 +170,7 @@ impl Shared {
     pub fn route_for(&self, path: &str) -> Result<Route, String> {
         self.emergency_or_stopping()?;
         let routes = self.routes.read().unwrap_or_else(|e| e.into_inner());
-        match routes.iter().find(|r| normalize_path(&r.path) == path) {
+        let result = match routes.iter().find(|r| normalize_path(&r.path) == path) {
             Some(r) if !r.enabled => Err(format!("The route \"{}\" is disabled in OpenDelay.", r.name)),
             Some(r) if !r.source.is_empty() => Err(format!(
                 "The route \"{}\" sends the stream of another route in OpenDelay; point your encoder at that route.",
@@ -173,7 +178,18 @@ impl Shared {
             )),
             Some(r) => Ok(r.clone()),
             None => Err(format!("OpenDelay has no route \"/{path}\". Check the server URL in your encoder.")),
+        };
+        *self.refused.lock().unwrap_or_else(|e| e.into_inner()) = result.as_ref().err().map(|e| (e.clone(), Instant::now()));
+        if result.is_err() {
+            self.changed.send_modify(|v| *v += 1);
         }
+        result
+    }
+
+    /// Why the last encoder was refused a route, for two minutes after.
+    pub fn refused(&self) -> Option<String> {
+        let refused = self.refused.lock().unwrap_or_else(|e| e.into_inner());
+        refused.as_ref().filter(|(_, at)| at.elapsed() < SHOW_REFUSED_FOR).map(|(why, _)| why.clone())
     }
 
     /// Enabled routes that also send the stream of route `id`.
@@ -385,6 +401,7 @@ impl Relay {
                 kept_delays: Mutex::default(),
                 handovers: Mutex::default(),
                 changed: Arc::new(watch::Sender::new(0)),
+                refused: Mutex::default(),
             }),
         }
     }
@@ -467,6 +484,10 @@ impl Relay {
 
     pub fn emergency_active(&self) -> bool {
         self.shared.emergency.load(Ordering::SeqCst)
+    }
+
+    pub fn refused(&self) -> Option<String> {
+        self.shared.refused()
     }
 
     /// Stop accepting encoders, wait up to `wait` for active streams to end,

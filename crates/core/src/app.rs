@@ -137,6 +137,8 @@ pub struct Status {
     pub overlay_visible: bool,
     pub overlay_color: String,
     pub emergency_stop: bool,
+    /// Why the last encoder was refused (unknown or disabled route), for two minutes.
+    pub encoder_refused: Option<String>,
     pub listener: ListenerStatus,
 }
 
@@ -516,6 +518,7 @@ impl App {
             overlay_visible: self.overlay_visible.load(Ordering::SeqCst),
             overlay_color: settings.overlay_color.clone(),
             emergency_stop: self.relay.emergency_active(),
+            encoder_refused: self.relay.refused(),
             listener: ListenerStatus {
                 mode: self.active_listener,
                 configured_mode: settings.listener_mode,

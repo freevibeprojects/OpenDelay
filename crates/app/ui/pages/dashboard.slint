@@ -251,6 +251,12 @@ export component DashboardPage {
                     label: @tr("Server URL");
                     copied => { AppState.toast(@tr("Copied to the clipboard"), "success"); }
                 }
+                if AppState.encoder-refused != "": Text {
+                    text: @tr("Your encoder was turned away: {}", AppState.encoder-refused);
+                    color: Theme.error;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
             }
         }
 

@@ -71,12 +71,14 @@ async fn unknown_and_disabled_routes_are_rejected() {
     let ingest = MockIngest::start(Behaviour::default()).await;
     let mut off = route("off", format!("rtmp://{}/live", ingest.addr));
     off.enabled = false;
-    let (_relay, addr) = relay_for(vec![off], Default::default()).await;
+    let (relay, addr) = relay_for(vec![off], Default::default()).await;
     for app in ["nope", "off"] {
         let (_enc, reply) = Encoder::connect(addr, app).await;
         assert_eq!(reply.name, "_error");
         assert_eq!(status_code(&reply.args[0]), "NetConnection.Connect.Rejected");
     }
+    let why = relay.refused().expect("the app can tell the user why");
+    assert!(why.contains("disabled"), "{why}");
     assert!(ingest.seen().is_empty());
 }
 

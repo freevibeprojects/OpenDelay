@@ -175,6 +175,7 @@ All durations are milliseconds.
   "overlayVisible": true,
   "overlayColor": "violet",
   "emergencyStop": false,
+  "encoderRefused": null,
   "listener": {
     "mode": "local",
     "configuredMode": "local",
@@ -214,6 +215,9 @@ All durations are milliseconds.
   strings (e.g. `"4.0 s"`, `"220 kbit/s"`), empty when there is nothing to
   show. `bitrate_high` exists only for routes with the `twitch` (8500 kbit/s)
   or `kick` (8000 kbit/s) preset; bitrates count video and audio.
+- `encoderRefused`: why the last encoder was turned away (unknown or disabled
+  route, or one that sends another route's stream), for two minutes; `null`
+  otherwise or once an encoder gets a route.
 - With several routes live, `streams` lists each one and the top-level fields
   describe the first.
 

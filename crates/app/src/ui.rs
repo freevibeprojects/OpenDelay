@@ -154,6 +154,7 @@ impl Ui {
         s.set_last_error(ss(primary.and_then(|p| p.last_error.clone()).unwrap_or_default()));
         s.set_delay_mode(cfg.mode_enabled);
         s.set_emergency(st.emergency_stop);
+        s.set_encoder_refused(ss(st.encoder_refused.as_deref().unwrap_or_default()));
         s.set_overlay_visible(st.overlay_visible);
         s.set_overlay_color(ss(&st.overlay_color));
         s.set_listener_mode(ss(if st.listener.configured_mode == ListenerMode::Lan { "lan" } else { "local" }));
