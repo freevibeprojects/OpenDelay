@@ -45,3 +45,10 @@ path = "fuzz_targets/engine.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "unzip"
+path = "fuzz_targets/unzip.rs"
+test = false
+doc = false
+bench = false

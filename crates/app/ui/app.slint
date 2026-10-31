@@ -212,6 +212,32 @@ export component MainWindow inherits Window {
         }
     }
 
+    if AppState.confirm-install: Modal {
+        width: parent.width;
+        height: parent.height;
+        title: @tr("Install version {}?", AppState.update-version);
+        card-width: 460px;
+        close => { AppState.confirm-install = false; }
+        Body { text: @tr("OpenDelay closes and starts the new version. Your settings and routes are kept."); }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: end;
+            Button {
+                text: @tr("Cancel");
+                kind: ButtonKind.ghost;
+                clicked => { AppState.confirm-install = false; }
+            }
+            Button {
+                text: @tr("Install and restart");
+                kind: ButtonKind.primary;
+                clicked => {
+                    AppState.confirm-install = false;
+                    AppState.install-update();
+                }
+            }
+        }
+    }
+
     if AppState.quitting: Rectangle {
         background: #000000b3;
         TouchArea { }

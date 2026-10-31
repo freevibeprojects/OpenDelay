@@ -33,9 +33,6 @@ fn main() {
     if platform::activate_running_instance(http_port) {
         return; // the running instance shows its window
     }
-    if let Ok(exe) = std::env::current_exe() {
-        opendelay_core::update::remove_old(&exe); // left by an installed update
-    }
     // Two workers are plenty for a handful of streams and the local API.
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("tokio runtime");
     let app = App::new(AppOptions::default());
@@ -68,6 +65,10 @@ fn main() {
         if minimized {
             ui.window().window().set_minimized(true);
         }
+    }
+    // The version an update replaced is kept until this one started fine.
+    if let Ok(exe) = std::env::current_exe() {
+        opendelay_core::update::remove_old(&exe);
     }
     if let Err(e) = slint::run_event_loop_until_quit() {
         eprintln!("UI error: {e}");

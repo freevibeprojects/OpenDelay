@@ -150,14 +150,15 @@ python3 scripts/third_party_licenses.py > THIRD_PARTY_LICENSES.md
 ## Fuzzing
 
 `fuzz/` holds [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) targets
-(nightly toolchain) for the chunk parser, AMF0, media inspection and the
-delay engine. It is not part of the workspace.
+(nightly toolchain) for the chunk parser, AMF0, media inspection, the update
+ZIP reader and the delay engine. It is not part of the workspace.
 
 ```sh
 cd fuzz
 cargo fuzz run -O chunk_reader -- -malloc_limit_mb=64 -rss_limit_mb=2048 -max_len=1048576
 cargo fuzz run -O amf0         -- -malloc_limit_mb=64 -rss_limit_mb=2048
 cargo fuzz run -O media        -- -malloc_limit_mb=64 -rss_limit_mb=2048
+cargo fuzz run -O unzip        -- -malloc_limit_mb=64 -rss_limit_mb=2048
 cargo fuzz run -O engine       -- -malloc_limit_mb=64 -rss_limit_mb=2048
 ```
 
@@ -178,13 +179,17 @@ expands into a huge structure) into a reported crash.
 ## Releases and updates
 
 The optional update check reads a release feed (GitHub "latest release"
-format); the first start asks whether to turn it on. A download is kept only
-if it matches a signed manifest: the manifest's Ed25519 signature must verify,
-its version must be newer than the running one, and the archive's SHA-256 must
-be the one it lists for this platform. On Windows, **Install and restart**
-then replaces `opendelay.exe` with the one in the archive (the previous one is
-kept as `opendelay.old` until the next start); it is refused while a stream
-runs, and the folder must be writable. Release builds set three build-time variables; without them the
+format); the first start asks whether to turn it on. An update is offered only
+with a signed manifest: its Ed25519 signature must verify, its version must be
+newer than the running one, not older than the highest signed version seen
+before, and equal to the release's tag. Files are downloaded only from the
+project's release download path, and a download is kept only with the SHA-256
+and size the manifest lists for this platform. On Windows, **Install and
+restart** (after a confirmation) checks the archive again, takes
+`opendelay.exe` from it only if it has the signed `exe_sha256`, and replaces
+the running executable (the previous one is kept as `opendelay.old` until the
+new one has started). It is refused while a stream runs, and the folder must be
+writable. Release builds set three build-time variables; without them the
 feed URL and help links are placeholders and every download is rejected
 (fail closed):
 
@@ -216,16 +221,39 @@ openssl genpkey -algorithm ed25519 -out release-key.pem      # once; keep it sec
 openssl pkey -in release-key.pem -pubout -outform DER | tail -c 32 | xxd -p -c 64   # OPENDELAY_UPDATE_KEY
 
 V=X.Y.Z
+L=opendelay-$V-linux-x86_64.tar.gz W=opendelay-$V-windows-x86_64.zip
+sum() { sha256sum "$1" | cut -d' ' -f1; }
 cat > manifest.json <<JSON
 { "version": "$V",
   "files": [
-    { "platform": "linux-x86_64", "name": "opendelay-$V-linux-x86_64.tar.gz",
-      "sha256": "$(sha256sum opendelay-$V-linux-x86_64.tar.gz | cut -d' ' -f1)" },
-    { "platform": "windows-x86_64", "name": "opendelay-$V-windows-x86_64.zip",
-      "sha256": "$(sha256sum opendelay-$V-windows-x86_64.zip | cut -d' ' -f1)" } ] }
+    { "platform": "linux-x86_64", "name": "$L", "sha256": "$(sum $L)", "size": $(stat -c %s $L) },
+    { "platform": "windows-x86_64", "name": "$W", "sha256": "$(sum $W)", "size": $(stat -c %s $W),
+      "exe_sha256": "$(sum target/x86_64-pc-windows-msvc/release/opendelay.exe)" } ] }
 JSON
 openssl pkeyutl -sign -inkey release-key.pem -rawin -in manifest.json | base64 -w0 > manifest.json.sig
 ```
 
 Upload both archives (names containing `linux-x86_64` / `windows-x86_64`),
-`manifest.json` and `manifest.json.sig` as release assets.
+`manifest.json` and `manifest.json.sig` as release assets. The tag must be
+`v$V`. Without `exe_sha256` the app downloads the update but refuses to
+install it.
+
+### Verify a download
+
+The executable is not code-signed. To check a release by hand, download
+`manifest.json` and `manifest.json.sig` next to the archive. With OpenSSL 3,
+the manifest must be signed by the release key:
+
+```sh
+cat > opendelay-release.pem <<'PEM'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAMqNxwjxTfOG2w4nzCpJegwthCDAEygt0jvGltYi8L0I=
+-----END PUBLIC KEY-----
+PEM
+base64 -d manifest.json.sig > manifest.sig
+openssl pkeyutl -verify -pubin -inkey opendelay-release.pem -rawin -in manifest.json -sigfile manifest.sig
+```
+
+It prints `Signature Verified Successfully`. Then the archive's SHA-256
+(`sha256sum`, or `Get-FileHash` in PowerShell) must be the `sha256` the
+manifest lists for it.

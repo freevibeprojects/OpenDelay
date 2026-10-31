@@ -248,7 +248,8 @@ The same actions are available over HTTP for scripts and the OBS dock:
   /api/twitch` (`{"server": "rtmp://…"}`), `GET /api/twitch/servers`
   (Twitch's ingest list, cached for 10 minutes).
 - `GET /api/diagnostics`, `GET /api/diagnostics/{id}` — session logs.
-- `GET /api/update` — release feed check (never downloads). Refused with
+- `GET /api/update` — release feed check (never downloads; the result is
+  reused for 10 minutes). Refused with
   code `update_check_off` unless "Check for updates" is on.
 - `POST /api/window/show` — bring the desktop window forward (used when
   OpenDelay is started a second time).

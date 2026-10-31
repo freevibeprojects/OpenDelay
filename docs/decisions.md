@@ -237,13 +237,26 @@ Each entry: the decision, then why.
   (version, and per platform the archive name and SHA-256) is signed with
   Ed25519; the signed version must be newer than the running one and the
   archive is streamed to a temporary file, hashed, and kept in
-  `<data dir>/updates` only if it matches. On Windows the user can then
-  install it: the executable is read from the verified ZIP (`miniz_oxide`,
-  already in the build through `png`), the running `opendelay.exe` is renamed
-  to `opendelay.old` (a running executable can be renamed, not deleted) and
-  replaced, and the new one starts with `--updated`, waiting up to 15 s for
-  the old one to free its port. Refused while a stream runs. Elsewhere the
-  folder opens and the archive is unpacked by hand. Feed URL and
+  `<data dir>/updates` only if it matches (also the signed `size`; written
+  under a unique name other processes cannot write to). The check already
+  verifies the manifest, so the version shown is the signed one, and it must
+  equal the feed's tag. The highest signed version seen is kept in the
+  settings (`updateFloor`); older signed releases are refused, so an old
+  signed release cannot be replayed. Release files are fetched only from the
+  feed repository's `releases/download/` path. Feed checks are cached for 10
+  minutes, except "Check now". On Windows the user can then install it, after
+  a confirmation: the archive is hashed again (it sat in a user-writable
+  folder), `opendelay.exe` is read from it (`miniz_oxide`, already in the
+  build through `png`) and must have the signed `exe_sha256`, so the ZIP
+  reader never decides what runs. The new file is synced, the running
+  executable (whatever its name) is renamed to `opendelay.old` (a running
+  executable can be renamed, not deleted) and replaced, and the new one
+  starts with `--updated`, waiting up to 15 s for the old one to free its
+  port; `.old` is deleted once the new one has started. Refused while a
+  stream runs. Elsewhere the folder opens and the archive is unpacked by hand.
+  Not covered: a frozen feed (an attacker hiding new releases) and a stolen
+  signing key; the key stays on the release machine. Releases are immutable on
+  GitHub. The executable is not code-signed (no budget). Feed URL and
   public key are placeholders (verification fails closed). Verification uses
   `ring` (already linked by rustls) rather than a second Ed25519 crate.
 - **Tray**: Slint's built-in `SystemTrayIcon` (Win32 / StatusNotifierItem), so

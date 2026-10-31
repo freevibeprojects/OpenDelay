@@ -143,7 +143,7 @@ export component SettingsPage {
                     if AppState.update-ready: Button {
                         text: @tr("Install and restart");
                         kind: ButtonKind.primary;
-                        clicked => { AppState.install-update(); }
+                        clicked => { AppState.confirm-install = true; }
                     }
                     Body { text: AppState.update-status; vertical-alignment: center; horizontal-stretch: 1; }
                 }

@@ -111,6 +111,9 @@ export global AppState {
     in property <bool> update-available;
     // a verified download can be installed (Windows)
     in property <bool> update-ready;
+    in property <string> update-version;
+    // asking before the install
+    in-out property <bool> confirm-install;
     // first start: ask whether to check for updates
     in property <bool> ask-update-check;
     in property <bool> reduce-motion;

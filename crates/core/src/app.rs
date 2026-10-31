@@ -393,6 +393,22 @@ impl App {
         Ok(addr)
     }
 
+    /// Check the release feed (see [`crate::update::check`]) and remember the
+    /// highest signed version seen, so that older signed releases are refused later.
+    pub fn check_update(&self, fresh: bool) -> Result<Option<crate::update::UpdateInfo>, String> {
+        let floor = self.settings().update_floor;
+        let info = crate::update::check(env!("CARGO_PKG_VERSION"), &floor, fresh)?;
+        if let Some(i) = &info
+            && (floor.is_empty() || crate::update::newer(&i.version, &floor))
+        {
+            let _ = self.update_settings(|s| {
+                s.update_floor = i.version.clone();
+                Ok(())
+            });
+        }
+        Ok(info)
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }

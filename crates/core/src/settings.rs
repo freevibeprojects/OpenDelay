@@ -66,6 +66,8 @@ pub struct Settings {
     pub update_check: bool,
     /// The first start asked whether to check for updates (`false` asks again).
     pub update_check_asked: bool,
+    /// Highest signed release version seen; older signed releases are refused.
+    pub update_floor: String,
     pub hotkeys: Hotkeys,
     /// Overlay badge colour (palette name).
     pub overlay_color: String,
@@ -99,6 +101,7 @@ impl Default for Settings {
             language: String::new(),
             update_check: false,
             update_check_asked: false,
+            update_floor: String::new(),
             hotkeys: Hotkeys::default(),
             overlay_color: "violet".into(),
             overlay_style: "minimal".into(),

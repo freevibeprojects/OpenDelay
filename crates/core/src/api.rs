@@ -330,7 +330,9 @@ async fn update_check(State(app): AppState) -> Response {
         let p = Problem::new("update_check_off", "Update checks are turned off in OpenDelay's settings.");
         return respond(&app, Err(p), Value::Null);
     }
-    let r = tokio::task::spawn_blocking(|| crate::update::check(env!("CARGO_PKG_VERSION"))).await;
+    // Cached for 10 minutes: callers cannot use up the feed's rate limit.
+    let checker = app.clone();
+    let r = tokio::task::spawn_blocking(move || checker.check_update(false)).await;
     match r.map_err(|e| e.to_string()).and_then(|r| r) {
         Ok(info) => respond(&app, Ok(String::new()), json!({ "available": info.is_some(), "update": info })),
         Err(e) => respond(&app, Err(Problem::new("network", e)), Value::Null),

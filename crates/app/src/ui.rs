@@ -76,8 +76,9 @@ pub struct Ui {
     hotkeys: RefCell<Binder>,
     twitch: RefCell<Vec<TwitchIngest>>,
     update: RefCell<Option<UpdateInfo>>,
-    /// Verified archive ready to install.
-    downloaded: RefCell<Option<std::path::PathBuf>>,
+    /// Verified archive ready to install, with its signed details.
+    downloaded: RefCell<Option<(UpdateInfo, std::path::PathBuf)>>,
+    downloading: Cell<bool>,
 }
 
 impl Ui {
@@ -399,7 +400,8 @@ impl Ui {
 
     fn check_update(self: &Rc<Self>) {
         self.set_update_status("checking", "");
-        let job = self.rt.spawn_blocking(|| update::check(env!("CARGO_PKG_VERSION")));
+        let app = self.app.clone();
+        let job = self.rt.spawn_blocking(move || app.check_update(true));
         let ui = self.clone();
         let _ = slint::spawn_local(async move {
             match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
@@ -419,19 +421,25 @@ impl Ui {
     fn download_update(self: &Rc<Self>) {
         let Some(info) = self.update.borrow().clone() else { return };
         let Some(dir) = self.app.log_dir().and_then(|d| d.parent()).map(|d| d.join("updates")) else { return };
+        if self.downloading.replace(true) {
+            return; // one download at a time
+        }
         self.set_update_status("downloading", "");
-        let version = info.version.clone();
-        let job = self.rt.spawn_blocking(move || update::download(&info, &dir, env!("CARGO_PKG_VERSION")));
+        let job = self.rt.spawn_blocking(move || update::download(&info, &dir).map(|path| (info, path)));
         let ui = self.clone();
         let _ = slint::spawn_local(async move {
-            match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
-                // Windows archives install from the app; elsewhere the folder opens.
-                Ok(path) if cfg!(windows) => {
-                    ui.set_update_status("ready", &version);
+            let result = job.await.map_err(|e| e.to_string()).and_then(|r| r);
+            ui.downloading.set(false);
+            match result {
+                // Windows archives with a signed program checksum install from the
+                // app; otherwise the folder opens.
+                Ok((info, path)) if cfg!(windows) && info.exe_sha256.is_some() => {
+                    ui.set_update_status("ready", &info.version);
+                    ui.state().set_update_version(ss(&info.version));
                     ui.state().set_update_ready(true);
-                    *ui.downloaded.borrow_mut() = Some(path);
+                    *ui.downloaded.borrow_mut() = Some((info, path));
                 }
-                Ok(path) => {
+                Ok((_, path)) => {
                     ui.set_update_status("saved", &path.to_string_lossy());
                     if let Some(folder) = path.parent() {
                         platform::open(&folder.to_string_lossy());
@@ -442,15 +450,15 @@ impl Ui {
         });
     }
 
-    /// Only on the user's request, and never while a stream runs: replace the
-    /// executable with the verified one and start it.
+    /// Only on the user's confirmed request, and never while a stream runs:
+    /// replace the executable with the verified one and start it.
     fn install_update(&self) {
-        let Some(archive) = self.downloaded.borrow().clone() else { return };
+        let Some((info, archive)) = self.downloaded.borrow().clone() else { return };
         if !self.app.relay.sessions().is_empty() {
             return self.set_update_status("streaming", "");
         }
         let started = std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| {
-            update::install(&archive, &exe)?;
+            update::install(&info, &archive, &exe)?;
             std::process::Command::new(&exe).arg("--updated").spawn().map_err(|e| e.to_string())
         });
         match started {
@@ -526,6 +534,7 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
         twitch: RefCell::default(),
         update: RefCell::default(),
         downloaded: RefCell::default(),
+        downloading: Cell::new(false),
     });
     let settings = ui.app.settings();
     ui.set_language(&settings.language);
