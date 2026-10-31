@@ -227,7 +227,10 @@ shortcut to add a platform.
   the local web server, intended for OBS "Custom Browser Dock".
 - **Overlay page**: transparent page for an OBS Browser Source that shows the
   delay state on stream (badge with delay on/off, countdown/progress during
-  transitions). Can be hidden via the toggle-overlay action. Accepts a
+  transitions). Two designs: the delay time only, or icon, text and time;
+  the text is editable, and the badge shows either only while the delay is on
+  or whenever a stream is connected (LIVE without the delay). Can be hidden
+  via the toggle-overlay action. Accepts a
   language parameter and a preview/scale parameter for the in-app preview.
 
 ### 7.4 Languages

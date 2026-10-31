@@ -2,7 +2,7 @@
 // Overlay: OBS browser source URL, badge colour, live preview, OBS dock URL.
 
 import { Theme, Icons } from "../theme.slint";
-import { Button, ButtonKind, Card, CopyField, Toggle, Body, SectionTitle } from "../widgets.slint";
+import { Button, ButtonKind, Card, CopyField, Toggle, Body, SectionTitle, Segmented, TextField } from "../widgets.slint";
 import { AppState, Strings } from "../state.slint";
 
 export global Palette {
@@ -39,11 +39,13 @@ export global Palette {
     }
 }
 
-// The on-stream badge, as the overlay page draws it: the delay time only.
+// The on-stream badge as the overlay page draws it with the delay on.
 export component OverlayBadge {
     in property <color> tone: Palette.color-of(AppState.overlay-color);
+    in property <bool> classic: AppState.overlay-style == "classic";
     in property <int> seconds: AppState.delay-active ? AppState.current-delay-s : AppState.configured-delay-s;
     in property <float> progress: AppState.progress;
+    property <string> label: AppState.overlay-text != "" ? AppState.overlay-text : root.classic ? @tr("DELAY ON") : "";
     height: 52px;
     width: row.preferred-width;
     Rectangle {
@@ -55,8 +57,31 @@ export component OverlayBadge {
         drop-shadow-color: root.tone.with-alpha(0.3);
         clip: true;
         row := HorizontalLayout {
-            padding-left: 20px;
+            padding-left: root.classic ? 8px : 20px;
             padding-right: 20px;
+            spacing: 12px;
+            if root.classic: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 18px;
+                    background: root.tone.with-alpha(0.2);
+                    Image {
+                        source: Icons.hourglass;
+                        colorize: root.tone;
+                        width: 20px;
+                        height: 20px;
+                    }
+                }
+            }
+            if root.label != "": Text {
+                text: root.label;
+                color: #f4f4f6;
+                font-size: 15px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
             Text {
                 text: Strings.duration(root.seconds);
                 color: root.tone;
@@ -84,7 +109,7 @@ export component OverlayPage {
                 padding: 20px;
                 spacing: 10px;
                 SectionTitle { text: @tr("On-stream overlay"); }
-                Body { text: @tr("In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; the badge shows the delay time, only while the delay is on."); }
+                Body { text: @tr("In OBS add a Browser source with this URL (width 600, height 160). The background is transparent; choose below what the badge shows and when."); }
                 CopyField {
                     value: AppState.overlay-url;
                     label: @tr("Overlay URL");
@@ -128,6 +153,36 @@ export component OverlayPage {
                         x: 20px;
                         y: 20px;
                         opacity: AppState.overlay-visible ? 1 : 0.35;
+                    }
+                }
+                Text { text: @tr("Design"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+                Segmented {
+                    label: @tr("Design");
+                    width: 300px;
+                    options: [@tr("Delay time only"), @tr("Icon, text and time")];
+                    selected: AppState.overlay-style == "classic" ? 1 : 0;
+                    chosen(i) => { AppState.set-overlay-style(i == 1 ? "classic" : "minimal"); }
+                }
+                Text { text: @tr("Text"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+                TextField {
+                    label: @tr("Text");
+                    width: 300px;
+                    placeholder: AppState.overlay-style == "classic" ? @tr("DELAY ON") : @tr("No text, only the time");
+                    text: AppState.overlay-text;
+                    edited(t) => { AppState.set-overlay-text(t); }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Toggle {
+                        label: @tr("Only while the delay is on");
+                        checked: AppState.overlay-only-delayed;
+                        toggled(on) => { AppState.set-overlay-only-delayed(on); }
+                    }
+                    Text {
+                        text: AppState.overlay-only-delayed ? @tr("Only while the delay is on") : @tr("Whenever you stream (shows LIVE without the delay)");
+                        color: Theme.text-primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
                     }
                 }
                 Text { text: @tr("Badge colour"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }

@@ -13,6 +13,11 @@
 <body>
 <div id="wrap">
   <div class="badge hidden" id="badge" role="status" aria-live="polite">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" id="icon-delay" aria-hidden="true"><path d="M6.5 3h11M6.5 21h11M7.5 3v3.5a4.5 4.5 0 0 0 9 0V3M7.5 21v-3.5a4.5 4.5 0 0 1 9 0V21"/></svg>
+      <svg viewBox="0 0 24 24" id="icon-live" aria-hidden="true" class="off"><circle cx="12" cy="12" r="2.5"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></svg>
+    </div>
+    <span class="label" id="label"></span>
     <span class="value" id="value"></span>
     <div class="progress" id="progress"></div>
   </div>

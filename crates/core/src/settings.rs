@@ -65,6 +65,12 @@ pub struct Settings {
     pub hotkeys: Hotkeys,
     /// Overlay badge colour (palette name).
     pub overlay_color: String,
+    /// Overlay badge design: `minimal` (delay time) or `classic` (icon, label and time).
+    pub overlay_style: String,
+    /// Overlay label while the delay is on; empty = the default ("DELAY ON" in classic).
+    pub overlay_text: String,
+    /// Show the overlay only while the delay is on (otherwise whenever a stream is connected).
+    pub overlay_only_delayed: bool,
     pub reduce_motion: bool,
     /// Fields this version does not know (e.g. from a newer version), kept on save.
     #[serde(flatten)]
@@ -89,6 +95,9 @@ impl Default for Settings {
             update_check: false,
             hotkeys: Hotkeys::default(),
             overlay_color: "violet".into(),
+            overlay_style: "minimal".into(),
+            overlay_text: String::new(),
+            overlay_only_delayed: true,
             reduce_motion: false,
             extra: serde_json::Map::new(),
         }
@@ -164,7 +173,16 @@ impl Settings {
         if crate::routes::validate_twitch_server(&self.twitch_server).is_err() {
             self.twitch_server = TWITCH_AUTO.into();
         }
+        if self.overlay_style != "classic" {
+            self.overlay_style = "minimal".into();
+        }
+        self.overlay_text = clean_overlay_text(&self.overlay_text);
     }
+}
+
+/// At most 40 visible characters on one line, without control characters.
+pub fn clean_overlay_text(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).take(40).collect::<String>().trim().to_owned()
 }
 
 pub(crate) fn home() -> Option<PathBuf> {
@@ -234,6 +252,11 @@ mod tests {
         let s = Settings::from_json(r#"{"version": 1, "twitchServer": "rtmp://evil/app", "delaySecs": 0}"#).unwrap();
         assert_eq!(s.twitch_server, TWITCH_AUTO, "invalid Twitch server reset");
         assert_eq!(s.delay_secs, 1);
+        let long = "x".repeat(60);
+        let s = Settings::from_json(&format!(r#"{{"overlayStyle": "fancy", "overlayText": " a\nb{long}"}}"#)).unwrap();
+        assert_eq!(s.overlay_style, "minimal", "unknown overlay style reset");
+        assert_eq!(s.overlay_text.chars().count(), 39, "one line, at most 40 characters, trimmed");
+        assert!(s.overlay_only_delayed);
     }
 
     #[test]

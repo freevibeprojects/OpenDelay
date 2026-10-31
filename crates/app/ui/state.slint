@@ -90,6 +90,11 @@ export global AppState {
     // ---- overlay / dock / controllers ----
     in property <bool> overlay-visible: true;
     in property <string> overlay-color: "violet";
+    // "minimal" (delay time) or "classic" (icon, label and time)
+    in property <string> overlay-style: "minimal";
+    // label while the delay is on; "" = default
+    in property <string> overlay-text;
+    in property <bool> overlay-only-delayed: true;
     in property <string> overlay-url;
     in property <string> dock-url;
     in property <string> ws-url;
@@ -135,6 +140,9 @@ export global AppState {
     callback set-delay-mode(bool);
     callback toggle-overlay();
     callback set-overlay-color(string);
+    callback set-overlay-style(string);
+    callback set-overlay-text(string);
+    callback set-overlay-only-delayed(bool);
     callback clear-emergency();
     // returns an error message, or "" on success
     callback save-route(RouteItem) -> string;

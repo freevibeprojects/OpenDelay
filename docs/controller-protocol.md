@@ -174,6 +174,9 @@ All durations are milliseconds.
   ],
   "overlayVisible": true,
   "overlayColor": "violet",
+  "overlayStyle": "minimal",
+  "overlayText": "",
+  "overlayOnlyDelayed": true,
   "emergencyStop": false,
   "encoderRefused": null,
   "listener": {
@@ -215,6 +218,10 @@ All durations are milliseconds.
   strings (e.g. `"4.0 s"`, `"220 kbit/s"`), empty when there is nothing to
   show. `bitrate_high` exists only for routes with the `twitch` (8500 kbit/s)
   or `kick` (8000 kbit/s) preset; bitrates count video and audio.
+- `overlayStyle`: `minimal` (delay time) or `classic` (icon, text and time);
+  `overlayText`: the badge text while the delay is on (empty: the default);
+  `overlayOnlyDelayed`: the badge shows only while the delay is on, otherwise
+  whenever a stream is connected.
 - `encoderRefused`: why the last encoder was turned away (unknown or disabled
   route, or one that sends another route's stream), for two minutes; `null`
   otherwise or once an encoder gets a route.

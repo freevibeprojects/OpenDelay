@@ -14,6 +14,14 @@ body.preview { background: linear-gradient(135deg, #1f2937 0%, #312e81 55%, #0f1
   transition: opacity 300ms ease, transform 300ms ease;
 }
 .badge.hidden { opacity: 0; transform: translateY(-8px); }
+.badge.classic { padding-left: 8px; }
+.icon { display: none; width: 36px; height: 36px; border-radius: 50%; place-items: center;
+        background: color-mix(in srgb, var(--tone) 20%, transparent); }
+.classic .icon { display: grid; }
+.icon svg.off { display: none; }
+.icon svg { width: 20px; height: 20px; fill: none; stroke: var(--tone); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.label { font-weight: 700; font-size: 15px; letter-spacing: 0.02em; white-space: nowrap; }
 .value { font-weight: 700; font-size: 15px; color: var(--tone); }
+.label:empty, .value:empty { display: none; }
 .progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--tone); transition: width 240ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .badge, .progress { transition: none; } }

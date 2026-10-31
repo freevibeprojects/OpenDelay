@@ -248,6 +248,9 @@ impl Ui {
         s.set_reduce_motion(st.reduce_motion);
         self.window.global::<Theme>().set_reduce_motion(st.reduce_motion);
         s.set_overlay_color(ss(&st.overlay_color));
+        s.set_overlay_style(ss(&st.overlay_style));
+        s.set_overlay_text(ss(&st.overlay_text));
+        s.set_overlay_only_delayed(st.overlay_only_delayed);
         s.set_custom_delay_s(st.hotkeys.custom_delay_secs as i32);
         s.set_hk_enable(ss(hotkeys::display(&st.hotkeys.enable_delay)));
         s.set_hk_go_live(ss(hotkeys::display(&st.hotkeys.go_live)));
@@ -571,6 +574,15 @@ pub fn create(app: Arc<App>, rt: tokio::runtime::Handle) -> Result<Rc<Ui>, slint
     }));
     s.on_set_overlay_color(with_ui!(|u, name| {
         u.save(|s| s.overlay_color = name.to_string());
+    }));
+    s.on_set_overlay_style(with_ui!(|u, style| {
+        u.save(|s| s.overlay_style = style.to_string());
+    }));
+    s.on_set_overlay_text(with_ui!(|u, text| {
+        u.save(|s| s.overlay_text = opendelay_core::settings::clean_overlay_text(&text));
+    }));
+    s.on_set_overlay_only_delayed(with_ui!(|u, on| {
+        u.save(|s| s.overlay_only_delayed = on);
     }));
     s.on_save_route(with_ui!(|u, item| u.save_route(item)));
     s.on_route_name(with_ui!(|u, id| {

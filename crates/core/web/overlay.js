@@ -17,12 +17,20 @@ function render(st) {
   const tone = PALETTE[OD.params.get("color")] || PALETTE[st.overlayColor] || PALETTE.violet;
   badge.style.setProperty("--tone", tone);
   const d = st.delay;
-  // Only the delay time, and only while the delay is on.
+  const classic = st.overlayStyle === "classic";
   const delayed = st.connected && ["delayed", "buffering"].includes(d.state);
+  const goingLive = st.connected && d.state === "draining";
+  // The offline preview shows the badge as it looks with the delay on.
+  const on = delayed || (preview && !st.connected);
+  badge.classList.toggle("classic", classic);
+  $("icon-delay").classList.toggle("off", !(on || goingLive));
+  $("icon-live").classList.toggle("off", on || goingLive);
+  const label = st.overlayText || (classic ? OD.t("badge_delay") : "");
+  $("label").textContent = goingLive ? OD.t("badge_going_live") : on ? label : OD.t("badge_live");
   const seconds = (d.state === "delayed" ? d.currentMs : delayed ? d.targetMs : d.configuredMs) / 1000;
-  $("value").textContent = OD.duration(Math.round(seconds));
+  $("value").textContent = on ? OD.duration(Math.round(seconds)) : "";
   $("progress").style.width = d.progress == null ? "0" : `${Math.round(d.progress * 100)}%`;
-  const show = preview || (st.overlayVisible && delayed);
+  const show = preview || (st.overlayVisible && (st.overlayOnlyDelayed ? delayed : st.connected));
   badge.classList.toggle("hidden", !show);
 }
 

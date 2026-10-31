@@ -136,6 +136,9 @@ pub struct Status {
     pub streams: Vec<StreamStatus>,
     pub overlay_visible: bool,
     pub overlay_color: String,
+    pub overlay_style: String,
+    pub overlay_text: String,
+    pub overlay_only_delayed: bool,
     pub emergency_stop: bool,
     /// Why the last encoder was refused (unknown or disabled route), for two minutes.
     pub encoder_refused: Option<String>,
@@ -517,6 +520,9 @@ impl App {
             streams,
             overlay_visible: self.overlay_visible.load(Ordering::SeqCst),
             overlay_color: settings.overlay_color.clone(),
+            overlay_style: settings.overlay_style.clone(),
+            overlay_text: settings.overlay_text.clone(),
+            overlay_only_delayed: settings.overlay_only_delayed,
             emergency_stop: self.relay.emergency_active(),
             encoder_refused: self.relay.refused(),
             listener: ListenerStatus {
