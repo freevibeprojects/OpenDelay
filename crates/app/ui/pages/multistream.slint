@@ -10,21 +10,27 @@ export global RouteEditor {
     in-out property <RouteItem> route;
     in-out property <string> error;
     in-out property <bool> confirm-delete;
+    in-out property <bool> show-key;
+    property <RouteItem> blank;
 
     public function edit(r: RouteItem) {
         self.route = r;
         self.error = "";
         self.confirm-delete = false;
+        self.show-key = false;
         self.open = true;
     }
 
+    // Nothing is preselected: the user picks the platform first.
     public function add() {
-        self.pick(AppState.presets[1]);
+        self.route = self.blank;
+        self.error = "";
         self.confirm-delete = false;
+        self.show-key = false;
         self.open = true;
     }
 
-    // New routes send the main route's stream by default (one encoder output).
+    // New routes send the first route's stream by default (one encoder output).
     public function pick(p: RouteItem) {
         self.route = p;
         if (AppState.route-sources.length > 0) {
@@ -84,6 +90,7 @@ export component RouteEditorModal inherits Modal {
     property <bool> is-new: RouteEditor.route.id == "";
     property <bool> is-twitch: RouteEditor.route.preset == "twitch";
     property <bool> is-mirror: RouteEditor.route.source != "";
+    property <bool> picked: RouteEditor.route.preset != "";
 
     if root.is-new: VerticalLayout {
         spacing: 8px;
@@ -97,8 +104,12 @@ export component RouteEditorModal inherits Modal {
                 clicked => { RouteEditor.pick(p); }
             }
         }
+        if !root.picked: Body {
+            text: @tr("Pick the platform you want to stream to.");
+            font-size: 12px;
+        }
     }
-    VerticalLayout {
+    if root.picked: VerticalLayout {
         spacing: 6px;
         Text { text: @tr("Name"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         TextField {
@@ -107,10 +118,10 @@ export component RouteEditorModal inherits Modal {
             text <=> RouteEditor.route.name;
         }
     }
-    HorizontalLayout {
+    if root.picked: HorizontalLayout {
         spacing: 12px;
         Toggle {
-            label: @tr("Send the stream of another route");
+            label: @tr("Same stream as another route (multistream)");
             checked: root.is-mirror;
             enabled: root.is-mirror || AppState.route-sources.length > 0;
             toggled(on) => {
@@ -119,17 +130,17 @@ export component RouteEditorModal inherits Modal {
             }
         }
         Text {
-            text: @tr("Send the stream of another route");
+            text: @tr("Same stream as another route (multistream)");
             color: Theme.text-primary;
             font-size: 13px;
             vertical-alignment: center;
         }
     }
-    if root.is-mirror: VerticalLayout {
+    if root.picked && root.is-mirror: VerticalLayout {
         spacing: 6px;
-        Text { text: @tr("Stream of"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+        Text { text: @tr("Same stream as"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         Select {
-            label: @tr("Stream of");
+            label: @tr("Same stream as");
             choices: AppState.route-sources;
             value: RouteEditor.route.source;
             current: RouteEditor.route.source-name;
@@ -139,21 +150,30 @@ export component RouteEditorModal inherits Modal {
             }
         }
         Body {
-            text: @tr("One encoder output reaches several platforms: whatever your encoder sends to \"{}\" also goes here, with this platform's stream key.", RouteEditor.route.source-name);
+            text: @tr("Whatever your encoder sends to \"{}\" also goes to this platform, with this platform's stream key. Nothing to change in your encoder.", RouteEditor.route.source-name);
             font-size: 12px;
         }
     }
-    if root.is-mirror: VerticalLayout {
+    if root.picked && root.is-mirror: VerticalLayout {
         spacing: 6px;
         Text { text: @tr("Stream key"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
-        TextField {
-            label: @tr("Stream key");
-            password: true;
-            placeholder: RouteEditor.route.has-key ? @tr("Saved; paste a new key to replace it") : @tr("Paste the stream key from the platform");
-            text <=> RouteEditor.route.key;
+        HorizontalLayout {
+            spacing: 8px;
+            TextField {
+                label: @tr("Stream key");
+                password: !RouteEditor.show-key;
+                placeholder: RouteEditor.route.has-key ? @tr("Saved; paste a new key to replace it") : @tr("Paste the stream key from the platform");
+                text <=> RouteEditor.route.key;
+            }
+            IconButton {
+                icon: RouteEditor.show-key ? Icons.eye-off : Icons.eye;
+                label: RouteEditor.show-key ? @tr("Hide the key") : @tr("Show the key");
+                size: 38px;
+                clicked => { RouteEditor.show-key = !RouteEditor.show-key; }
+            }
         }
     }
-    if !root.is-mirror: VerticalLayout {
+    if root.picked && !root.is-mirror: VerticalLayout {
         spacing: 6px;
         Text { text: @tr("Local path"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         TextField {
@@ -166,7 +186,7 @@ export component RouteEditorModal inherits Modal {
             font-size: 12px;
         }
     }
-    VerticalLayout {
+    if root.picked: VerticalLayout {
         spacing: 6px;
         Text {
             text: root.is-twitch ? @tr("Twitch server") : @tr("Platform server URL");
@@ -199,7 +219,7 @@ export component RouteEditorModal inherits Modal {
             font-size: 12px;
         }
     }
-    HorizontalLayout {
+    if root.picked: HorizontalLayout {
         spacing: 12px;
         Toggle {
             label: @tr("Enabled");
@@ -243,6 +263,7 @@ export component RouteEditorModal inherits Modal {
         Button {
             text: @tr("Save");
             kind: ButtonKind.primary;
+            enabled: root.picked;
             clicked => {
                 RouteEditor.error = AppState.save-route(RouteEditor.route);
                 if (RouteEditor.error == "") {
@@ -310,7 +331,7 @@ component RouteCard inherits Card {
             if root.route.source != "": VerticalLayout {
                 spacing: 6px;
                 horizontal-stretch: 3;
-                Text { text: @tr("Stream of"); color: Theme.text-secondary; font-size: 12px; }
+                Text { text: @tr("Same stream as"); color: Theme.text-secondary; font-size: 12px; }
                 Rectangle {
                     min-height: 38px;
                     Text {
@@ -359,7 +380,7 @@ export component MultistreamPage {
         HorizontalLayout {
             spacing: 16px;
             Body {
-                text: @tr("To stream to several platforms with one encoder output, add a route per platform that sends the stream of your main route, with that platform's stream key.");
+                text: @tr("Your encoder streams to one route. To go live on more platforms at the same time, click \"Add route\", pick the platform and paste its stream key: it gets the same stream.");
                 font-size: 13px;
                 horizontal-stretch: 1;
                 vertical-alignment: center;
@@ -378,7 +399,7 @@ export component MultistreamPage {
                 padding: 20px;
                 spacing: 8px;
                 SectionTitle { text: @tr("Streaming to several platforms"); }
-                Body { text: @tr("• One encoder output: \"Add route\", pick the platform, keep \"Send the stream of another route\" on and paste the platform's stream key. Your encoder keeps streaming to your main route only."); }
+                Body { text: @tr("• Same stream everywhere: \"Add route\", pick the platform, keep \"Same stream as another route\" on and paste the platform's stream key. Your encoder keeps streaming to its one route."); }
                 Body { text: @tr("• Separate outputs (e.g. Aitum Vertical for a vertical stream): turn that switch off and give each output its own route URL."); }
                 Body { text: @tr("Each platform connects and reconnects on its own, and the delay applies to all of them at once. Your upload carries every platform's stream."); }
             }
