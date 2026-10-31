@@ -230,7 +230,8 @@ impl Ui {
         if self.shown.borrow().routes != routes {
             let first = routes.iter().find(|r| r.enabled && r.source.is_empty()).or(routes.first());
             s.set_encoder_url(first.map_or_else(SharedString::default, |r| r.local_url.clone()));
-            let sources = routes.iter().filter(|r| r.source.is_empty());
+            // A disabled route receives nothing, so it has nothing to pass on.
+            let sources = routes.iter().filter(|r| r.enabled && r.source.is_empty());
             s.set_route_sources(model(
                 sources.map(|r| Choice { value: r.id.clone(), label: r.name.clone() }).collect(),
             ));
