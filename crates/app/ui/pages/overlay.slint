@@ -163,9 +163,9 @@ export component OverlayPage {
                     selected: AppState.overlay-style == "classic" ? 1 : 0;
                     chosen(i) => { AppState.set-overlay-style(i == 1 ? "classic" : "minimal"); }
                 }
-                Text { text: @tr("Text"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
+                Text { text: @tr("Text while the delay is on"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
                 TextField {
-                    label: @tr("Text");
+                    label: @tr("Text while the delay is on");
                     width: 300px;
                     placeholder: AppState.overlay-style == "classic" ? @tr("DELAY ON") : @tr("No text, only the time");
                     text: AppState.overlay-text;
