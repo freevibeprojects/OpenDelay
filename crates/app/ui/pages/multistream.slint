@@ -165,7 +165,8 @@ export component RouteEditorModal inherits Modal {
                 placeholder: RouteEditor.route.has-key ? @tr("Saved; paste a new key to replace it") : @tr("Paste the stream key from the platform");
                 text <=> RouteEditor.route.key;
             }
-            IconButton {
+            // A saved key is never sent back to the window: only typed text can be shown.
+            if RouteEditor.route.key != "": IconButton {
                 icon: RouteEditor.show-key ? Icons.eye-off : Icons.eye;
                 label: RouteEditor.show-key ? @tr("Hide the key") : @tr("Show the key");
                 size: 38px;
