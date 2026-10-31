@@ -103,8 +103,8 @@ export component RouteEditorModal inherits Modal {
         Text { text: @tr("Name"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         TextField {
             label: @tr("Name");
-            text: RouteEditor.route.name;
-            edited(t) => { RouteEditor.route.name = t; }
+            // Two-way: a typed field still follows when a preset replaces the route.
+            text <=> RouteEditor.route.name;
         }
     }
     HorizontalLayout {
@@ -150,8 +150,7 @@ export component RouteEditorModal inherits Modal {
             label: @tr("Stream key");
             password: true;
             placeholder: RouteEditor.route.has-key ? @tr("Saved; paste a new key to replace it") : @tr("Paste the stream key from the platform");
-            text: RouteEditor.route.key;
-            edited(t) => { RouteEditor.route.key = t; }
+            text <=> RouteEditor.route.key;
         }
     }
     if !root.is-mirror: VerticalLayout {
@@ -159,9 +158,8 @@ export component RouteEditorModal inherits Modal {
         Text { text: @tr("Local path"); color: Theme.text-secondary; font-size: 12px; font-weight: 600; }
         TextField {
             label: @tr("Local path");
-            text: RouteEditor.route.path;
+            text <=> RouteEditor.route.path;
             mono: true;
-            edited(t) => { RouteEditor.route.path = t; }
         }
         Body {
             text: @tr("Your encoder publishes to rtmp://127.0.0.1:1937/{}. Path changes take effect the next time the encoder connects.", RouteEditor.route.path);
@@ -190,9 +188,8 @@ export component RouteEditorModal inherits Modal {
         if !root.is-twitch: TextField {
             label: @tr("Platform server URL");
             placeholder: "rtmp://… or rtmps://…";
-            text: RouteEditor.route.upstream;
+            text <=> RouteEditor.route.upstream;
             mono: true;
-            edited(t) => { RouteEditor.route.upstream = t; }
         }
         Body {
             text: root.is-twitch && root.is-mirror ? @tr("Only Twitch ingest servers are accepted.")
